@@ -1,0 +1,3 @@
+[submodule "microinjector"]
+	path = microinjector
+	url = https://github.com/jgsuw/microinjector
