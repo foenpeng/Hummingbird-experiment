@@ -9,8 +9,17 @@ import sys
 import serial as s
 import time as t
 from datetime import date
-from multiprocessing import Process, Event
+from multiprocessing import Process, Event, Queue
 
+
+"""TODO
+1 we dont' send time stamp from arduino
+2 add an injection event whenever the injector is at the starting point
+3 optional: activate/deactivate arduino based on animal presence
+4 start writing data when animal comes and stop when it is gone. and convert them to csv when animal is gone.
+
+
+"""
 
                 
 class FlowerController(Process):
@@ -20,19 +29,14 @@ class FlowerController(Process):
                         controller_port = "COM3", 
                         injector_port = "COM4",):
                         
-        """
-        TODO: need to reorganize the __init__ method, so that all non-primitive attributes
-        of the process are initialized in the child process, rather than the parent process.
-        """
-    
         #Process setup
         Process.__init__(self)
         self.animal_gone = animal_gone
         self.exit_event = exit_event
         
         # IR Sensor hysteresis constants
-        self.high_to_low = 100 #magic numbers, GET RID OF THEM
-        self.low_to_high = 150 #
+        self.high_to_low = 190 #magic numbers, GET RID OF THEM
+        self.low_to_high = 220 #
         
         # Declare filenames to write in output folder
         self.Xfilename = "x_data.csv"
@@ -48,9 +52,20 @@ class FlowerController(Process):
         self.nct_prnt = False
         self.start_time = None
         self.e_time = 0      
+
+        self.controller_port = controller_port
+        self.injector_port = injector_port
+
+        self.accel_sample_freq = accel_sample_freq
         
-        # Get the morphology to name the output folder
         self.morph = str(input("Which morphology is it?\n")) + "l070r1.5R025v020p000"
+        
+        self.message_queue = Queue()
+        
+        
+    def begin(self):
+    
+        # Get the morphology to name the output folder
         os.chdir(os.path.join(self.path, "Data Files"))
         
         if not os.path.exists((os.path.join(os.getcwd(), self.morph))):
@@ -69,7 +84,7 @@ class FlowerController(Process):
         try:
             os.mkdir(self.folder)
         except:
-            print("failed to make working directory\n")
+            print("failed to make working directory " + self.folder + "\n")
             
         # Open output files in working directory
         self.Xfilename = self.folder + "/" + self.Xfilename
@@ -79,13 +94,6 @@ class FlowerController(Process):
         self.Efilename = self.folder + "/" + self.Efilename
         self.Ifilename = self.folder + "/" + self.Ifilename
         self.rawfilename = self.folder + "/" + self.rawfilename
-
-        self.controller_port = controller_port
-        self.injector_port = injector_port
-
-        self.accel_sample_freq = accel_sample_freq
-        
-    def begin(self):
     
         try:
             # Open ports at 1Mbit/sec
@@ -94,7 +102,7 @@ class FlowerController(Process):
                                     timeout = 1)
             
             self.injector = s.Serial(self.injector_port,
-                                     1e6,
+                                     115200,
                                      timeout = 1)
             success = True
             
@@ -107,8 +115,7 @@ class FlowerController(Process):
             self.controller.dtr = False
             self.injector.dtr = False
             t.sleep(2)
-            
-            
+     
         except s.SerialException:
             success = False
             print("Failed to open one of the ports")
@@ -130,7 +137,7 @@ class FlowerController(Process):
                 self.controller.write(cmd)
                 success = True
                 
-            except BaseException:
+            except BaseException:                                                                  #### e?
                 success = False
                 raise(e)
                 
@@ -156,56 +163,58 @@ class FlowerController(Process):
                 self.start_time = round(t.clock(),5)
                 
         while True:
-        
             if self.exit_event.is_set():
                 break
        
-                self.retrieve_data()
-                
-                nectar_value = self.parse_nectar_measurement()
-                
-                self.determine_nectar_state( nectar_value ) #TODO: this has to change, since we are no longer sensing liquid!
-                
-                if self.animal_gone.is_set() and not self.nct_prnt:
-                    self.inject()
-                    self.nct_prnt = True
-                    toc = round(t.clock(),3)
-                    print("Nectar refilled at time stamp {} \n".format(toc))
-                    line = "1,{}\n".format(toc)
-                    self.Efile.write(line)
-                    self.e_time = toc 
-                    self.animal_gone.clear()
+            data = self.retrieve_data()
+            
+            nectar_value = self.parse_nectar_measurement(data)
+            self.determine_nectar_state( nectar_value ) #TODO: this has to change, since we are no longer sensing liquid!
+            
+            if self.animal_gone.is_set() and not self.nct_prnt:
+                self.inject()
+                self.nct_prnt = True
+                toc = round(t.clock(),3)
+                print("Nectar refilled at time stamp {} \n".format(toc))
+                line = "1,{}\n".format(toc)
+                self.Efile.write(line)
+                self.e_time = toc 
+                self.animal_gone.clear()
 
         self.stop()
         
     """ Reads 24 bytes, to try and grab 2 frames of data """    
     def retrieve_data(self) :
-        while(self.controller.in_waiting):
-            data = self.controller.read(24)
+        #while(self.controller.in_waiting):
+        data = self.controller.read(24)
+        if data is not None: 
             self.raw_data.write(data)
-    
+        return data
+
     """ Parses the last 24 bytes grabbed to try and extract a IR sensor measurement """
-    def parse_nectar_measurement(self):
+    def parse_nectar_measurement(self, data):
         nectar_value = None
-        for i in range(len(data)):
+        
+        if data is not None:
+            for i in range(len(data)):
 
-            # Check for the data code
-            if data[i] == 'N' and i+1 in range(len(data)):
-            
-                if i-3 in range(len(data)):
-
-                    # Check to make sure that the previous value was from Z channel
-                    if data[i-3] == 'Z':
-                        nectar_value = data[i+1]
-                        break
-                        
-                elif i+3 in range(len(data)):
+                # Check for the data code
+                if chr(data[i]) == 'N' and i+1 in range(len(data)):
                 
-                    # Check to make sure that the following value is form X channel
-                    if data[i+3] == 'X':
-                        nectar_value = data[i+1]
-                        break
-                        
+                    if i-3 in range(len(data)):
+
+                        # Check to make sure that the previous value was from Z channel
+                        if chr(data[i-3]) == 'Z':
+                            nectar_value = data[i+1]
+                            break
+                            
+                    elif i+3 in range(len(data)):
+                    
+                        # Check to make sure that the following value is form X channel
+                        if chr(data[i+3]) == 'X':
+                            nectar_value = data[i+1]
+                            break
+                            
         return nectar_value
                         
                         
@@ -221,7 +230,7 @@ class FlowerController(Process):
                 
                 if toc - self.e_time > 1:
                 
-                    if(self.nct_prnt == True and (ord(nectar_value) > low_to_high)) :
+                    if(self.nct_prnt == True and (nectar_value > self.low_to_high)) :
                         self.nct_prnt = False
                         print("Nectar emptied at time stamp {0} \n".format(toc))
                         line = "0,{0}\n".format(toc)
@@ -230,9 +239,9 @@ class FlowerController(Process):
 
         
     def inject(self):
-        self.controller.flushInput()                                                     
-        cmd = bytearray("inject\n" 'ascii')
-        self.controller.write(cmd)
+        self.injector.flushInput()                                                     
+        cmd = bytearray("inject\n", 'ascii')
+        self.injector.write(cmd)
         toc = round(t.clock(),3)
         time = str(toc)
         line = "{0}\n".format(time);
@@ -250,17 +259,18 @@ class FlowerController(Process):
         # Unpack the data
         self.unpack_data()
         # Fix the time overflow issue
+        self.exit_time = t.clock()
         try:
 
-            update_time(self.Xfilename, 4 * self.accel_sample_freq)
-            update_time(self.Yfilename, 4 * self.accel_sample_freq)
-            update_time(self.Zfilename, 4 * self.accel_sample_freq)
-            update_time(self.Nfilename, 4 * self.accel_sample_freq)
+            self.update_time(self.Xfilename, 4 * self.accel_sample_freq)
+            self.update_time(self.Yfilename, 4 * self.accel_sample_freq)
+            self.update_time(self.Zfilename, 4 * self.accel_sample_freq)
+            self.update_time(self.Nfilename, 4 * self.accel_sample_freq)
 
             pass
         except OSError as e:
             raise(e)
-        # Write the comments file
+   
         try:
             commentfile = self.folder + "/comments.txt"
 
@@ -268,34 +278,22 @@ class FlowerController(Process):
             filename.write("Flower morphology tested: \n")
             filename.write("{0}\n".format(self.morph)) # Flower morphology tested: 
             filename.write("Trial starts at: \n")
-            filename.write("{0}\n".format(starttime)) # Start time
-            #filename.write("Video starts at time: {0}\n".format(v.start_time))
-            #filename.write("Sensor starts at time: {0}\n".format(self.start_time))
-            #toc = round(t.clock(),3)
+            filename.write("{0}\n".format(self.start_time)) # Start time
             filename.write("Program lasts (seconds): \n")
-            filename.write("{0}\n".format(exit_time)) # Program lasts time
+            filename.write("{0}\n".format(self.exit_time)) # Program lasts time
             filename.write("The x,y,z sampling frequency: \n")
             filename.write("{0}\n". format(self.accel_sample_freq)) # The x,y,z sampling frequency
-            temp = input("Temperature? \n").strip()
-            filename.write("Temperature? \n")
-            filename.write("{0}\n".format(temp))
-            hum = input("Humidity? \n").strip()
-            filename.write("Humidity? \n")
-            filename.write("{0}\n".format(hum))
             filename.write("Sex of the moth? \n\n")
-            weight = input("Body Weight? \n").strip()
-            filename.write("Body Weight?\n")
-            filename.write("{0}\n".format(weight))
-            filename.write("Body length? \n\n")
             filename.write("Proboscis length? \n\n")
             filename.write("How many days after eclosion? \n\n")
-            filename.write("Program exit condition?\n")
-            filename.write(exit_text +"\n")
-            comments = input("Comments on this trial?\n").strip()
-            filename.write(comments)
             filename.close()
+            
+            self.message_queue.put(commentfile)
+
         except OSError as e:
             raise(e)
+            
+        
 
     """
     This function reads from the raw binary data file and separates each
@@ -371,6 +369,62 @@ class FlowerController(Process):
         self.Efile.close()
         self.Ifile.close()
 
+    """
+    This function is used to adjust the time stamps sent by
+    the flower controller after the data has been unpacked and sorted
+    into separate files.
+
+    For example, the sequence of time stamps
+    0, 1, ..., 2^16-1, 0, 1, ... 2^16-1 is converted into
+    0, 1, ..., 2^16-1, 2^16, 2^16+1, ..., 2^17-1
+    """
+    def update_time(self, filename, frequency):
+        print("Updating " + filename)
+        
+        # open the file for reading
+        try:
+            in_file = open(filename, 'r')
+        except OSError:
+            raise OSError("Error opening " + filename + "for reading!")
+            
+        # Loop over the file contents, and then process
+        lines = list()
+        offset = 0;
+        last_time = 0;
+        modulus = pow(2,8)
+        time_unit = (self.exit_time - self.start_time)/self.frame_count
+        time_line = self.start_time
+        
+        for line in in_file:
+            # split the data into (data,time_stamp)
+            (data, sep, time_stamp) = line.partition(',')
+            time_line = time_line + time_unit
+            time_stamp = str(round(time_line,4))
+            
+            # Rejoin the parts to a new line, and write to file
+            if('' == data):
+                lines.append(time_stamp+'\n')
+            else:
+                lines.append("".join((data,sep,time_stamp))+'\n')
+        in_file.close()
+        
+        # Open the file for writing
+        try:
+            out_file = open(filename,'w')
+            
+        # OSError caught incase the file does not exist or this
+        # script does not have permissions to write
+        except OSError:
+            print("Error opening " + filename + " for writing!")
+            raise OSError
+            
+        # Write the data to the file
+        for line in lines:
+            out_file.write(line)
+
+        # All done with this file
+        out_file.close()
+    
 def locate_frame(index,data): 
     if data[index] != ord('X'):
         return False
@@ -382,61 +436,3 @@ def locate_frame(index,data):
         return False
     else:
         return True
-
-
-"""
-This function is used to adjust the time stamps sent by
-the flower controller after the data has been unpacked and sorted
-into separate files.
-
-For example, the sequence of time stamps
-0, 1, ..., 2^16-1, 0, 1, ... 2^16-1 is converted into
-0, 1, ..., 2^16-1, 2^16, 2^16+1, ..., 2^17-1
-"""
-def update_time(filename, frequency):
-    print("Updating " + filename)
-    
-    # open the file for reading
-    try:
-        in_file = open(filename, 'r')
-    except OSError:
-        raise OSError("Error opening " + filename + "for reading!")
-        
-    # Loop over the file contents, and then process
-    lines = list()
-    offset = 0;
-    last_time = 0;
-    modulus = pow(2,8)
-    time_unit = (exit_time - f.start_time)/f.frame_count
-    time_line = f.start_time
-    
-    for line in in_file:
-        # split the data into (data,time_stamp)
-        (data, sep, time_stamp) = line.partition(',')
-        time_line = time_line + time_unit
-        time_stamp = str(round(time_line,4))
-        
-        # Rejoin the parts to a new line, and write to file
-        if('' == data):
-            lines.append(time_stamp+'\n')
-        else:
-            lines.append("".join((data,sep,time_stamp))+'\n')
-    in_file.close()
-    
-    # Open the file for writing
-    try:
-        out_file = open(filename,'w')
-        
-    # OSError caught incase the file does not exist or this
-    # script does not have permissions to write
-    except OSError:
-        print("Error opening " + filename + " for writing!")
-        raise OSError
-        
-    # Write the data to the file
-    for line in lines:
-        out_file.write(line)
-
-    # All done with this file
-    out_file.close()
-    
