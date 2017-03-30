@@ -17,17 +17,15 @@ from multiprocessing import Process, Event, Queue
 2 add an injection event whenever the injector is at the starting point
 3 optional: activate/deactivate arduino based on animal presence
 4 start writing data when animal comes and stop when it is gone. and convert them to csv when animal is gone.
-
-
+5 how to pass the path variable to video detection?
 """
-
-                
+               
 class FlowerController(Process):
 
     def __init__(self,  animal_gone, exit_event,
-                        accel_sample_freq = 1000, 
-                        controller_port = "COM3", 
-                        injector_port = "COM4",):
+                        controller_port, 
+                        injector_port,
+                        accel_sample_freq = 1000):
                         
         #Process setup
         Process.__init__(self)
@@ -47,8 +45,6 @@ class FlowerController(Process):
         self.Ifilename = "i_data.csv"
         self.rawfilename = "raw_data"
         
-        self.path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        
         self.nct_prnt = False
         self.start_time = None
         self.e_time = 0      
@@ -59,41 +55,47 @@ class FlowerController(Process):
         self.accel_sample_freq = accel_sample_freq
         
         self.morph = str(input("Which morphology is it?\n")) + "l070r1.5R025v020p000"
+        self.morph_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/Data Files/" + self.morph
         
-        self.message_queue = Queue()
-        
-        
-    def begin(self):
-    
-        # Get the morphology to name the output folder
-        os.chdir(os.path.join(self.path, "Data Files"))
-        
-        if not os.path.exists((os.path.join(os.getcwd(), self.morph))):
-           os.makedirs((os.path.join(os.getcwd(), self.morph)))
-           
-        os.chdir(os.path.join(os.getcwd(), self.morph))
+        if not os.path.exists(self.morph_path):
+           os.makedirs(self.morph_path)
         
         today = date.today()
-        
         now = datetime.datetime.now()
         
         # Get the date, also used to name output folder
         self.folder = str(today)+ "_" + str(now.hour)+ "_" + str(now.minute) +"_" + self.morph
+        self.trial_path = self.morph_path + "/" + self.folder
+        print(self.trial_path)
+        self.message_queue = Queue()
+        self.message_queue.put(self.trial_path)
+        
+    def begin(self):
+    
+        # Get the morphology to name the output folder
+        #os.chdir(os.path.join(self.path, "Data Files"))
+        
+
+        
+        #self.morph_path = os.path.join(os.getcwd(), self.morph)        
+        #os.chdir(self.morph_path)
+        
+
         
         # change working directory to data files
         try:
-            os.mkdir(self.folder)
+            os.mkdir(self.trial_path)
         except:
-            print("failed to make working directory " + self.folder + "\n")
+            print("failed to make working directory " + self.trial_path + "\n")
             
         # Open output files in working directory
-        self.Xfilename = self.folder + "/" + self.Xfilename
-        self.Yfilename = self.folder + "/" + self.Yfilename
-        self.Zfilename = self.folder + "/" + self.Zfilename
-        self.Nfilename = self.folder + "/" + self.Nfilename
-        self.Efilename = self.folder + "/" + self.Efilename
-        self.Ifilename = self.folder + "/" + self.Ifilename
-        self.rawfilename = self.folder + "/" + self.rawfilename
+        self.Xfilename = self.trial_path + "/" + self.Xfilename
+        self.Yfilename = self.trial_path + "/" + self.Yfilename
+        self.Zfilename = self.trial_path + "/" + self.Zfilename
+        self.Nfilename = self.trial_path + "/" + self.Nfilename
+        self.Efilename = self.trial_path + "/" + self.Efilename
+        self.Ifilename = self.trial_path + "/" + self.Ifilename
+        self.rawfilename = self.trial_path + "/" + self.rawfilename
     
         try:
             # Open ports at 1Mbit/sec
@@ -272,7 +274,7 @@ class FlowerController(Process):
             raise(e)
    
         try:
-            commentfile = self.folder + "/comments.txt"
+            commentfile = self.trial_path + "/comments.txt"
 
             filename = open(commentfile, 'w')
             filename.write("Flower morphology tested: \n")
@@ -287,9 +289,7 @@ class FlowerController(Process):
             filename.write("Proboscis length? \n\n")
             filename.write("How many days after eclosion? \n\n")
             filename.close()
-            
-            self.message_queue.put(commentfile)
-
+            print("comments written")
         except OSError as e:
             raise(e)
             
