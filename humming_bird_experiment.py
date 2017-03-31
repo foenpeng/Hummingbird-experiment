@@ -29,20 +29,20 @@ if __name__ == "__main__" :
     recording = multiprocessing.Event()
     animal_departed = multiprocessing.Event()
     exit_event = multiprocessing.Event()
+    message_queue = multiprocessing.Queue()
 
     from flower_controller import FlowerController
     port1 = input("Please enter COM port for flower controller: ") or "COM3"
     port2 = input("Please enter COM port for microinjector: ") or "COM6"
-    flower_control_process = FlowerController(recording, animal_departed, exit_event, controller_port = port1, injector_port = port2)
-
+    flower_control_process = FlowerController(recording, animal_departed, exit_event, message_queue, controller_port = port1, injector_port = port2)
 
 
     from video_detection import Webcam
-    webcam_process = Webcam(recording, animal_departed, exit_event)
+    webcam_process = Webcam(recording, animal_departed, exit_event, message_queue)
 
-    webcam_process.start()
     flower_control_process.start()
-
+    webcam_process.start()
+    
     trial_path = flower_control_process.message_queue.get()
 
     try :

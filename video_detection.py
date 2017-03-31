@@ -7,10 +7,11 @@ from multiprocessing import Process, Event
 
 class Webcam(Process):
 
-    def __init__(self, recording, animal_departed, exit_event):
+    def __init__(self, recording, animal_departed, exit_event, message_queue):
         self.recording = recording
         self.animal_departed = animal_departed
         self.exit_event = exit_event
+        self.message_queue = message_queue
         self.animal_prnt = False
         self.firstFrame = None
         self.previous_image = None
@@ -30,11 +31,12 @@ class Webcam(Process):
 
         # frame rate
         self.start_time = round(t.clock(), 2)
-        self.Mfile=open("m_data.csv",'w')
+        self.trial_path = self.message_queue.get()
+        self.Mfile=open(self.trial_path + "/m_data.csv",'w')
 
         self.cam = cv2.VideoCapture(1)
-        self.video  = cv2.VideoWriter("video.avi",cv2.VideoWriter_fourcc('X','V','I','D'), self.fps, (640, 480), False)
-
+        self.video  = cv2.VideoWriter(self.trial_path + "/video.avi",cv2.VideoWriter_fourcc('X','V','I','D'), self.fps, (640, 480), False)
+        
         t.sleep(1.5) # allow enough time for the camera to adjust to the light condition before fetch ref frame
         self.reference_image = self.get_ref_frame()
         cv2.imshow('ref',self.reference_image)
@@ -95,6 +97,7 @@ class Webcam(Process):
                 self.error_adjust = 0
             else:
                 self.further_processing(thresh)
+                self.recording.set()
         else:
             self.AbsentFrame += 1
             cv2.destroyWindow('thresh')
@@ -139,9 +142,8 @@ class Webcam(Process):
         if (self.ROI[0]-centroid_x)**2 + (self.ROI[1]-centroid_y)**2 < self.ROI[2]**2: # judge if the centroid is inside the circle
             cv2.circle(self.display_image, (self.ROI[0], self.ROI[1]), self.ROI[2], (255, 255, 255), 2)
             cv2.putText(self.display_image, "Animal Present", (250, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (255, 255, 255), 1)
-
             self.animal_prnt = True
-            self.recording.set()
+            
             self.AbsentFrame = 0
             line = "{0},{1}\n".format(1,toc)
             self.Mfile.write(line)
