@@ -192,7 +192,6 @@ class FlowerController(Process):
             if not self.recording.is_set() and self.state is "processing" :
                 self.process_raw_data()
 
-
             if self.animal_departed.is_set() and not self.nct_prnt:
                 self.inject()
                 self.nct_prnt = True
@@ -342,9 +341,14 @@ class FlowerController(Process):
             data = bytearray()
             data += self.raw_files[0]['handle'].read(12)
 
+            if len(data) < 12 : return
+
             while not locate_frame ( 0, data ) :
                 data.pop(0)
-                data += self.raw_files[0]['handle'].read(1)
+                byte = self.raw_files[0]['handle'].read(1)
+                if byte is not "" :
+                    data += self.raw_files[0]['handle'].read(1)
+                else : return
 
             self.raw_files[0]['frame count'] += 1
 
