@@ -1,7 +1,7 @@
 import multiprocessing
 import time
 
-def write_comment( comment_file ) :    
+def write_comment( comment_file ) :
     try:
         filename = open(comment_file, "a")
 
@@ -26,22 +26,23 @@ def write_comment( comment_file ) :
 
 if __name__ == "__main__" :
 
-    animal_gone = multiprocessing.Event()
+    recording = multiprocessing.Event()
+    animal_departed = multiprocessing.Event()
     exit_event = multiprocessing.Event()
 
     from flower_controller import FlowerController
     port1 = input("Please enter COM port for flower controller: ") or "COM3"
     port2 = input("Please enter COM port for microinjector: ") or "COM6"
-    flower_control_process = FlowerController(animal_gone, exit_event, controller_port = port1, injector_port = port2)
-    
-    
-    
+    flower_control_process = FlowerController(recording, animal_departed, exit_event, controller_port = port1, injector_port = port2)
+
+
+
     from video_detection import Webcam
-    webcam_process = Webcam(animal_gone, exit_event)
+    webcam_process = Webcam(recording, animal_departed, exit_event)
 
     webcam_process.start()
     flower_control_process.start()
-    
+
     trial_path = flower_control_process.message_queue.get()
 
     try :
@@ -51,13 +52,12 @@ if __name__ == "__main__" :
         webcam_process.join()
         flower_control_process.join()
         write_comment(comment_file)
-     
+
     except KeyboardInterrupt :
         exit_event.set()
         comment_file = flower_control_process.message_queue.get()
         print("joining video detection process...")
         webcam_process.join()
         print("joining flower controller process...")
-        flower_control_process.join()      
+        flower_control_process.join()
         write_comment(comment_file)
-     
