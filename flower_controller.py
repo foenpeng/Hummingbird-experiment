@@ -15,8 +15,11 @@ DATA_FRAME_SIZE = 12
 
 """TODO
 1 I need to validate the time stamp on x, y, z, n file. 
-2 add an injection event whenever the injector is at the starting point and the first two injection at the start of experiment were wired
-3 the n value does not change, needs to fix
+2 add an injection event whenever the injector is at the starting point
+3 the v 1st visit start time is wrong.
+4 the time in m is not consistent with v
+5 it takes some time between exit event triggered and flower controller join, even all the files have been processed
+6 adjust reference image opens a new m file
 
 """
 class FlowerController(Process):
@@ -44,16 +47,18 @@ class FlowerController(Process):
         self.Nfilename = "n_data.csv"
         self.Efilename = "e_data.csv"
         self.Ifilename = "i_data.csv"
+        self.Vfilename = "v_data.csv"
         self.raw_files = []
 
         # Initiate parameters
-        self.nct_prnt = False
+        self.nct_prnt = True
         self.start_time = None
         self.e_time = 0
         self.state = "processing"
         self.controller_port = controller_port
         self.injector_port = injector_port
         self.accel_sample_freq = accel_sample_freq
+        self.file_processing = None
         
         # Making a directory for the morph and pass its address into a queue
         self.morph = str(input("Which morphology is it?\n")) + "l070r1.5R025v020p000"
@@ -85,6 +90,7 @@ class FlowerController(Process):
         self.Nfilename = self.trial_path + "/" + self.Nfilename
         self.Efilename = self.trial_path + "/" + self.Efilename
         self.Ifilename = self.trial_path + "/" + self.Ifilename
+        self.Vfilename = self.trial_path + "/" + self.Vfilename
 
         # Open the two serial ports
         try:
@@ -122,6 +128,7 @@ class FlowerController(Process):
                 self.Nfile = open(self.Nfilename, 'w')
                 self.Efile = open(self.Efilename, 'w')
                 self.Ifile = open(self.Ifilename, 'w')
+                self.Vfile = open(self.Vfilename, 'w')
 
                 # Send samples rates and start command
                 cmd = bytearray("{0}\n".format(self.accel_sample_freq), 'ascii')
@@ -138,13 +145,14 @@ class FlowerController(Process):
         else:
             self.running = False
 
-    """
-    This function implements the running Loop of the
-    FlowerController thread. It waits for 3-byte frames
-    of data from the arduino and writes them to a separate
-    file based on the first byte, the code, of the data.
-    """
+
     def run(self):
+        """
+        This function implements the running Loop of the
+        FlowerController thread. It waits for 3-byte frames
+        of data from the arduino and writes them to a separate
+        file based on the first byte, the code, of the data.
+        """
 
         self.begin()
         self.controller.flushInput()
@@ -154,36 +162,40 @@ class FlowerController(Process):
 
         while True:       
         
-            if self.exit_event.is_set():
+            if self.exit_event.is_set() :
+                while len(self.raw_files) > 0 :
+                    self.process_raw_data() # Process the remaining data
                 break
 
-            data = self.controller.read(24)
-            nectar_value = self.parse_nectar_measurement(data)
-            self.determine_nectar_state( nectar_value )
+            else : 
 
-            if self.recording.is_set() and self.state == "processing" :
-                self.state = "recording"
-                self.begin_raw_data_file()
+                if self.recording.is_set() and self.state == "processing" :
+                    self.state = "recording"
+                    self.begin_raw_data_file()  
 
-            if self.recording.is_set() and self.state == "recording" :
-                self.raw_files[-1]['handle'].write(data)
+                if self.recording.is_set() and self.state == "recording" :
+                    data = self.controller.read(24)
+                    nectar_value = self.parse_nectar_measurement(data)
+                    self.determine_nectar_state( nectar_value )
+                    self.raw_files[-1]['handle'].write(data)
 
-            if not self.recording.is_set() and self.state == "recording" :
-                self.state = "processing"
-                self.raw_files[-1]['stop time'] = t.clock()
-                self.raw_files[-1]['handle'].close()
+                if not self.recording.is_set() and self.state == "recording" :
+                    self.state = "processing"
+                    self.raw_files[-1]['stop time'] = t.clock()
+                    self.raw_files[-1]['handle'].close()
 
-            if not self.recording.is_set() and self.state == "processing" :
-                if len(self.raw_files) > 0 :
-                    self.process_raw_data()
 
-            if self.animal_departed.is_set() and not self.nct_prnt:
-                time = self.inject()
-                self.nct_prnt = True
-                line = "1,{}\n".format(time)
-                self.Efile.write(line)
-                self.e_time = time
-                self.animal_departed.clear()
+                if not self.recording.is_set() and self.state == "processing" :
+                    if len(self.raw_files) > 0 :
+                        self.process_raw_data()
+
+                if self.animal_departed.is_set() and not self.nct_prnt:
+                    time = self.inject()
+                    self.nct_prnt = True
+                    line = "1,{}\n".format(time)
+                    self.Efile.write(line)
+                    self.e_time = time
+                    self.animal_departed.clear()
 
         self.stop()
         
@@ -196,6 +208,14 @@ class FlowerController(Process):
         self.controller.close()
         # Fix the time overflow issue
         self.exit_time = t.clock()
+        
+        self.Xfile.close()
+        self.Yfile.close()
+        self.Zfile.close()
+        self.Nfile.close()
+        self.Efile.close()
+        self.Ifile.close()
+        self.Vfile.close()
 
         try:
             commentfile = self.trial_path + "/comments.txt"
@@ -216,24 +236,25 @@ class FlowerController(Process):
         except OSError as e:
             raise(e)
 
-    """ Parses the last 24 bytes grabbed to try and extract a IR sensor measurement """
+    
     def parse_nectar_measurement(self, data):
+        """ Parses the last 24 bytes grabbed to try and extract a IR sensor measurement """
         nectar_value = None
-
         if data is not None:
-            for i in range(len(data)):
+            size = len(data)
+            for i in range(size):
 
                 # Check for the data code
-                if chr(data[i]) == 'N' and i+1 in range(len(data)):
+                if chr(data[i]) == 'N' and i+1 in range(size):
 
-                    if i-3 in range(len(data)):
+                    if i-3 in range(size):
 
                         # Check to make sure that the previous value was from Z channel
                         if chr(data[i-3]) == 'Z':
                             nectar_value = data[i+1]
                             break
 
-                    elif i+3 in range(len(data)):
+                    elif i+3 in range(size):
 
                         # Check to make sure that the following value is form X channel
                         if chr(data[i+3]) == 'X':
@@ -282,58 +303,68 @@ class FlowerController(Process):
 
     def process_raw_data ( self ) :
 
-        # If no file is current being processed, open the next file                                                  #TODO: if the file processing was interrupted, this will make the program process the same file one more time from the beginning
+        # If no file is current being processed, open the next file                                                 
         if self.raw_files[0]['handle'].closed :
+            print("opening raw file...")
             self.raw_files[0]['handle'] = open( self.raw_files[0]['handle'].name, 'rb' )
 
         # Processing the file
         if not self.raw_files[0]['handle'].closed :
-            # grap next frame of data
-            data = bytearray()
-            data += self.raw_files[0]['handle'].read(12)
+            #print("processing raw file...")
+            try:
+                # grap next frame of data
+                data = bytearray()
+                data += self.raw_files[0]['handle'].read(12)
 
-            if len(data) < 12 : 
-                self.close_raw_file()
-                return
-
-            while not self.locate_frame ( 0, data ) :
-                data.pop(0)
-                byte = self.raw_files[0]['handle'].read(1)
-                if byte is not "" :
-                    data += byte
-                else :
+                if len(data) < 12 : 
                     self.close_raw_file()
                     return
 
-            self.raw_files[0]['frame count'] += 1
-            
-            # Determine timestamp of this sample
-            timestamp = self.raw_files[0]['start time'] + (self.raw_files[0]['frame count'] - 1.) / self.accel_sample_freq
+                while not self.locate_frame ( 0, data ) :
+                    data.pop(0)
+                    byte = self.raw_files[0]['handle'].read(1)
+                    if byte != bytearray() :
+                        data += byte
+                    else:
+                        self.close_raw_file()
+                        return
 
-            # Write the X value and timestamp to the CSV file
-            value = data[1]
-            line = "{0},{1}\n".format(value,timestamp)
-            self.Xfile.write(line)
+                self.raw_files[0]['frame count'] += 1
+                
+                # Determine timestamp of this sample
+                timestamp = self.raw_files[0]['start time'] + (self.raw_files[0]['frame count'] - 1.) / self.accel_sample_freq
 
-            # Write the Y value and timestamp to the CSV file
-            value = data[4]
-            line = "{0},{1}\n".format(value,timestamp)
-            self.Yfile.write(line)
+                # Write the X value and timestamp to the CSV file
+                value = data[1]
+                line = "{0},{1}\n".format(value,timestamp)
+                self.Xfile.write(line)
 
-            # Write the Z value and timestamp to the CSV file
-            value = data[7]
-            line = "{0},{1}\n".format(value,timestamp)
-            self.Zfile.write(line)
+                # Write the Y value and timestamp to the CSV file
+                value = data[4]
+                line = "{0},{1}\n".format(value,timestamp)
+                self.Yfile.write(line)
 
-            # Write the N value and timestamp to the CSV file
-            value = data[10]
-            line = "{0},{1}\n".format(value,timestamp)
-            self.Nfile.write(line)
+                # Write the Z value and timestamp to the CSV file
+                value = data[7]
+                line = "{0},{1}\n".format(value,timestamp)
+                self.Zfile.write(line)
+
+                # Write the N value and timestamp to the CSV file
+                value = data[10]
+                line = "{0},{1}\n".format(value,timestamp)
+                self.Nfile.write(line)
+                
+            except BaseException as e :
+                print("exception occurred: " + e)
+                
 
 
     def close_raw_file(self) :
+        line = "{0},{1},{2}\n".format(self.raw_files[0]['start time'],self.raw_files[0]['stop time'],self.raw_files[0]['frame count'])
+        self.Vfile.write(line)
         self.raw_files[0]['handle'].close()
-        #os.remove(self.raw_files[0]['handle'].name)
+        os.remove(self.raw_files[0]['handle'].name)
+        print("rawfile removed")
         self.raw_files.pop(0)
 
 
