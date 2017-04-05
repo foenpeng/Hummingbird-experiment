@@ -7,11 +7,13 @@ from multiprocessing import Process, Event
 
 class Webcam(Process):
 
-    def __init__(self, recording, animal_departed, exit_event, message_queue):
+    def __init__(self, recording, animal_departed, exit_event, message_queue, vtime_pipe):
         self.recording = recording
         self.animal_departed = animal_departed
         self.exit_event = exit_event
-        self.message_queue = message_queue
+        self.message_queue = message_queue        
+        self.vtime_pipe = vtime_pipe
+        
         self.animal_prnt = False
         self.firstFrame = None
         self.previous_image = None
@@ -27,10 +29,14 @@ class Webcam(Process):
         self.InjectionDelay = 2 # how many seconds after the animal left the region to refill nectar
         Process.__init__(self)
 
-    def begin(self):
 
+
+    def begin(self):
+        t.clock()
+        self.start_time = self.vtime_pipe.recv()
+        print("Video process starts at {}".format(self.start_time))
+        
         # frame rate
-        self.start_time = round(t.clock(), 2)
         self.trial_path = self.message_queue.get()
         self.Mfile=open(self.trial_path + "/m_data.csv",'w')
 
@@ -91,7 +97,7 @@ class Webcam(Process):
                 self.frame_count = 0
 
             if self.error_adjust >= self.consective_parameter[1]:
-                print("Reference image adjusted at {}".format(str(t.clock())))
+                print("Reference image adjusted at {}".format(str(round((t.clock()-self.start_time),2))))
                 self.reference_image = self.get_ref_frame()
                 cv2.imshow('ref',self.reference_image)
                 self.error_adjust = 0
@@ -107,16 +113,14 @@ class Webcam(Process):
             self.animal_departed.set()
             self.recording.clear()
             self.animal_prnt = False
-            print("animal is gone at: {}".format(round(t.clock(),2)))
-
-
+            print("animal is gone at: {}".format(str(round((t.clock()-self.start_time),2))))
 
     def further_processing(self, thresh):
         self.display_image = copy.deepcopy(self.current_image)
         centroid_x,centroid_y= 0,0
         biggest_cnt = 0
         num_biggest_cnt = None
-        toc = t.clock()
+        toc = round((t.clock()-self.start_time),3)
         thresh_dilate = cv2.dilate(thresh, None, iterations=2)
         _, cnts, _ = cv2.findContours(thresh_dilate, cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
 

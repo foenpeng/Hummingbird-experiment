@@ -16,15 +16,12 @@ DATA_FRAME_SIZE = 12
 """TODO
 1 I need to validate the time stamp on x, y, z, n file. 
 2 add an injection event whenever the injector is at the starting point
-3 the v 1st visit start time is wrong.
-4 the time in m is not consistent with v
-5 it takes some time between exit event triggered and flower controller join, even all the files have been processed
-6 adjust reference image opens a new m file
+3 it takes some time between exit event triggered and flower controller join, even all the files have been processed  - assert the serial port step in stop function
 
 """
 class FlowerController(Process):
 
-    def __init__(self,  recording, animal_departed, exit_event, message_queue,
+    def __init__(self,  recording, animal_departed, exit_event, message_queue, ftime_pipe,
                         controller_port,
                         injector_port,
                         accel_sample_freq = 1000):
@@ -32,10 +29,12 @@ class FlowerController(Process):
         #Process setup
         Process.__init__(self)
 
+
         # Those are the things need to be passed among processes
         self.recording = recording
         self.animal_departed = animal_departed
         self.exit_event = exit_event
+        self.ftime_pipe = ftime_pipe
 
         # IR Sensor hysteresis constants
         self.low_to_high = 220 
@@ -74,7 +73,9 @@ class FlowerController(Process):
         self.message_queue.put(self.trial_path)
 
     def begin(self):
-        
+        t.clock()
+        self.start_time = self.ftime_pipe.recv()
+        print("Flower process starts at {}".format(self.start_time))        
         self.message_queue.put(self.trial_path)
 
         # Make a working directory to ouput data files
@@ -157,12 +158,10 @@ class FlowerController(Process):
         self.begin()
         self.controller.flushInput()
 
-        if self.start_time is None:
-                self.start_time = round(t.clock(),5)
-
         while True:       
         
             if self.exit_event.is_set() :
+                print(self.raw_files)
                 while len(self.raw_files) > 0 :
                     self.process_raw_data() # Process the remaining data
                 break
@@ -181,7 +180,7 @@ class FlowerController(Process):
 
                 if not self.recording.is_set() and self.state == "recording" :
                     self.state = "processing"
-                    self.raw_files[-1]['stop time'] = t.clock()
+                    self.raw_files[-1]['stop time'] = t.clock()-self.start_time
                     self.raw_files[-1]['handle'].close()
 
 
@@ -200,15 +199,18 @@ class FlowerController(Process):
         self.stop()
         
     def stop(self):
+        
         # Assert Data Terminal Ready to reset Arduino
         self.controller.dtr = True
         t.sleep(1)
         self.controller.dtr = False
-        # Close the port
-        self.controller.close()
-        # Fix the time overflow issue
-        self.exit_time = t.clock()
         
+        # Close the port
+        self.controller.close()  
+
+        # Fix the time overflow issue
+        self.exit_time = round((t.clock()-self.start_time),2)
+
         self.Xfile.close()
         self.Yfile.close()
         self.Zfile.close()
@@ -271,7 +273,7 @@ class FlowerController(Process):
         """
         # Determine the nectar state
         if nectar_value is not None:
-                toc = round(t.clock(),3)
+                toc = round((t.clock()-self.start_time),3)
                 if toc - self.e_time > 1:
 
                     if (self.nct_prnt == True) and (nectar_value > self.low_to_high) :                              #TODO: this has to change, since we are no longer sensing liquid!
@@ -293,7 +295,7 @@ class FlowerController(Process):
             self.raw_files.append( {
                                     'handle' : open(self.rawfilename, 'wb'),
                                     'size'   : 0,                                                                    #TODO size seems not used.  those info needs to be written somewhere and compare with the video detection program.
-                                    'start time' : t.clock(),
+                                    'start time' : t.clock()-self.start_time,
                                     'stop time'  : None,
                                     'frame count': 0 } )
         except :
@@ -372,7 +374,7 @@ class FlowerController(Process):
         self.injector.flushInput()
         cmd = bytearray("inject\n", 'ascii')
         self.injector.write(cmd)
-        time = round(t.clock(),3)
+        time = round(t.clock()-self.start_time,3)
         line = "{0}\n".format(time);
         print("Injection requested at time stamp {0} \n".format(time))
         self.Ifile.write(line)
