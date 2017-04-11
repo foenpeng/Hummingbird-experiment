@@ -16,7 +16,10 @@ DATA_FRAME_SIZE = 12
 """TODO
 1 I need to validate the time stamp on x, y, z, n file. 
 2 add an injection event whenever the injector is at the starting point
-3 it takes some time between exit event triggered and flower controller join, even all the files have been processed  - assert the serial port step in stop function
+3 it takes some time between exit event triggered and flower controller join, even all the files have been processed  - assert the serial port step in stop function    JOEY
+4 need to put nectar and injection information in video
+5 check the logic of nectar detection
+6 the actual sampling frequencing is over 1k Hz. which leads to big difference between nectar empty time in e file and in n file     JOEY
 
 """
 class FlowerController(Process):
@@ -28,7 +31,6 @@ class FlowerController(Process):
 
         #Process setup
         Process.__init__(self)
-
 
         # Those are the things need to be passed among processes
         self.recording = recording
@@ -161,9 +163,14 @@ class FlowerController(Process):
         while True:       
         
             if self.exit_event.is_set() :
+                if self.state == "recording":
+                    self.state = "processing"
+                    self.raw_files[-1]['stop time'] = t.clock()-self.start_time
+                    self.raw_files[-1]['handle'].close()
                 print(self.raw_files)
                 while len(self.raw_files) > 0 :
-                    self.process_raw_data() # Process the remaining data
+                    if self.raw_files :
+                        self.process_raw_data() # Process the remaining data
                 break
 
             else : 
@@ -294,7 +301,7 @@ class FlowerController(Process):
         try :
             self.raw_files.append( {
                                     'handle' : open(self.rawfilename, 'wb'),
-                                    'size'   : 0,                                                                    #TODO size seems not used.  those info needs to be written somewhere and compare with the video detection program.
+                                    'size'   : 0,                                                                    
                                     'start time' : t.clock()-self.start_time,
                                     'stop time'  : None,
                                     'frame count': 0 } )
@@ -311,7 +318,7 @@ class FlowerController(Process):
             self.raw_files[0]['handle'] = open( self.raw_files[0]['handle'].name, 'rb' )
 
         # Processing the file
-        if not self.raw_files[0]['handle'].closed :
+        if not self.raw_files[0]['handle'].closed:
             #print("processing raw file...")
             try:
                 # grap next frame of data
