@@ -11,9 +11,9 @@ class Webcam(Process):
         self.recording = recording
         self.animal_departed = animal_departed
         self.exit_event = exit_event
-        self.message_queue = message_queue        
+        self.message_queue = message_queue
         self.vtime_pipe = vtime_pipe
-        
+
         self.animal_prnt = False
         self.firstFrame = None
         self.previous_image = None
@@ -35,14 +35,13 @@ class Webcam(Process):
         t.clock()
         self.start_time = self.vtime_pipe.recv()
         print("Video process starts at {}".format(self.start_time))
-        
+
         # frame rate
         self.trial_path = self.message_queue.get()
         self.Mfile=open(self.trial_path + "/m_data.csv",'w')
 
         self.cam = cv2.VideoCapture(1)
-        self.video  = cv2.VideoWriter(self.trial_path + "/video.avi",cv2.VideoWriter_fourcc('X','V','I','D'), self.fps, (640, 480), False)
-        
+        self.video  = cv2.VideoWriter(self.trial_path + "/video.avi",cv2.VideoWriter_fourcc('X','V','I','D'), self.fps, (640, 480), True)
         t.sleep(1.5) # allow enough time for the camera to adjust to the light condition before fetch ref frame
         self.reference_image = self.get_ref_frame()
         cv2.imshow('ref',self.reference_image)
@@ -75,6 +74,7 @@ class Webcam(Process):
             return 0
 
     def simple_processing(self, img):
+        self.original_image = img
         self.current_image = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
         diff = cv2.absdiff(self.current_image, self.reference_image)
         ret,thresh = cv2.threshold(diff,
@@ -104,19 +104,20 @@ class Webcam(Process):
             else:
                 self.further_processing(thresh)
                 self.recording.set()
+                self.animal_departed.clear()
         else:
             self.AbsentFrame += 1
             cv2.destroyWindow('thresh')
             cv2.destroyWindow('bird cam')
 
-        if self.AbsentFrame > self.fps * self.InjectionDelay and self.animal_prnt:
+        if self.AbsentFrame > self.fps * self.InjectionDelay and not self.animal_departed.is_set():
             self.animal_departed.set()
             self.recording.clear()
-            self.animal_prnt = False
+            #self.animal_prnt = False
             print("animal is gone at: {}".format(str(round((t.clock()-self.start_time),2))))
 
     def further_processing(self, thresh):
-        self.display_image = copy.deepcopy(self.current_image)
+        self.display_image = copy.deepcopy(self.original_image)
         centroid_x,centroid_y= 0,0
         biggest_cnt = 0
         num_biggest_cnt = None
@@ -147,7 +148,7 @@ class Webcam(Process):
             cv2.circle(self.display_image, (self.ROI[0], self.ROI[1]), self.ROI[2], (255, 255, 255), 2)
             cv2.putText(self.display_image, "Animal Present", (250, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (255, 255, 255), 1)
             self.animal_prnt = True
-            
+
             self.AbsentFrame = 0
             line = "{0},{1}\n".format(1,toc)
             self.Mfile.write(line)

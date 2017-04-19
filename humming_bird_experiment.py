@@ -1,5 +1,16 @@
 import multiprocessing
 import time
+import requests
+
+def send_message(error_message):
+    return requests.post(
+        "https://api.mailgun.net/v3/YOUR_DOMAIN_NAME/messages",
+        auth=("api", "key-2aa750675b64feccadca6cdeefa4ac78"),
+        data={"from": "Lab <mailgun@mydomain.com>",
+              "to": ["peng.foen@gmail.com", "foen@mydomain.com"],
+              "subject": "Error on Hummingbird Experiment",
+              "text": error_message})
+
 
 def write_comment( comment_file ) :
     try:
@@ -36,19 +47,19 @@ if __name__ == "__main__" :
 
     from flower_controller import FlowerController
     port1 = input("Please enter COM port for flower controller: ") or "COM3"
-    port2 = input("Please enter COM port for microinjector: ") or "COM6"
+    port2 = input("Please enter COM port for microinjector: ") or "COM4"
     flower_control_process = FlowerController(recording, animal_departed, exit_event, message_queue,ftime_pipe, controller_port = port1, injector_port = port2)
 
 
     from video_detection import Webcam
     webcam_process = Webcam(recording, animal_departed, exit_event, message_queue, vtime_pipe)
- 
-    mtime1.send(time.clock())
+
+    mtime1.send(round(time.clock(),4))
     flower_control_process.start()
-    
-    mtime2.send(time.clock())
+
+    mtime2.send(round(time.clock(),4))
     webcam_process.start()
-    
+
     trial_path = flower_control_process.message_queue.get()
 
     try :
@@ -59,9 +70,9 @@ if __name__ == "__main__" :
         flower_control_process.join()
         write_comment(comment_file)
 
-    except KeyboardInterrupt :
+    except KeyboardInterrupt:
         exit_event.set()
-        comment_file = flower_control_process.message_queue.get()
+        comment_file = trial_path  + "/comments.txt"
         print("joining video detection process...")
         webcam_process.join()
         print("joining flower controller process...")
