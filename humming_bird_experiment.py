@@ -1,6 +1,7 @@
 import multiprocessing
 import time
 import requests
+import sys
 
 def send_message(error_message):
     return requests.post(
@@ -37,44 +38,85 @@ def write_comment( comment_file ) :
 
 if __name__ == "__main__" :
 
+    from gui import Gui
+    gui = Gui()
+
+    while not gui.start_event : pass
+
+    # IPC Objects for signaling and passing data between child processes
     recording = multiprocessing.Event()
     animal_departed = multiprocessing.Event()
     exit_event = multiprocessing.Event()
     message_queue = multiprocessing.Queue()
-    # The following two pipes were used to send the time of main process to childs
-    mtime1, ftime_pipe = multiprocessing.Pipe()
-    mtime2, vtime_pipe = multiprocessing.Pipe()
 
     from flower_controller import FlowerController
-    port1 = input("Please enter COM port for flower controller: ") or "COM3"
-    port2 = input("Please enter COM port for microinjector: ") or "COM4"
-    flower_control_process = FlowerController(recording, animal_departed, exit_event, message_queue,ftime_pipe, controller_port = port1, injector_port = port2)
+
+    port1 = Gui.get_flower_port()
+    port2 = Gui.get_microinjector_port()
+
+    flower_control_process = FlowerController(  recording, animal_departed,
+                                                exit_event, message_queue,
+                                                controller_port = port1,
+                                                injector_port = port2   )
 
 
     from video_detection import Webcam
-    webcam_process = Webcam(recording, animal_departed, exit_event, message_queue, vtime_pipe)
+    webcam_process = Webcam(recording, animal_departed, exit_event, message_queue)
 
-    mtime1.send(round(time.clock(),4))
-    flower_control_process.start()
 
-    mtime2.send(round(time.clock(),4))
-    webcam_process.start()
+    # Running block - catch exceptions here and then tear down the program.
+    else :
 
-    trial_path = flower_control_process.message_queue.get()
+        flower_control_process.parent_connection.send(round(time.clock(),4))
+        flower_control_process.start()
 
-    try :
-        input("Enter anything to exit: \n")
+        webcam_process.parent_connection.send(round(time.clock(),4))
+        webcam_process.start()
+
+        trial_path = flower_control_process.message_queue.get()
+
+        while not gui.stop_event :
+            # Checks for runtime exceptions encountered in the child processes
+            if flower_control_process.parent_connection.poll(1.e-1) :
+
+                obj = flower_control_process.parent_connection.recv()
+
+                # If a runtime exception occurred, join the other process and exit
+                if isinstance( obj, BaseException ) :
+
+                    message = "Runtime exception occurred in flower control process\n" + \
+                    str ( obj )
+                    send_message(message)
+
+                    flower_control_process.terminate()
+
+                    exit_event.set()
+                    webcam_process.join()
+
+                    sys.exit(1)
+
+            else if webcam_process.parent_connection.poll(1.e-1) :
+
+                obj = webcam_process.parent_connection.recv()
+
+                if isinstance( obj, BaseException ) :
+
+                    message = "Runtime exception occurred in webcam process\n" + \
+                    str ( obj )
+                    send_message(message)
+
+                    webcam_process.terminate()
+
+                    exit_event.set()
+                    flower_control_process.join()
+
+                    sys.exit(1)
+
+
         exit_event.set()
         comment_file = trial_path  + "/comments.txt"
-        webcam_process.join()
-        flower_control_process.join()
-        write_comment(comment_file)
 
-    except KeyboardInterrupt:
-        exit_event.set()
-        comment_file = trial_path  + "/comments.txt"
-        print("joining video detection process...")
         webcam_process.join()
-        print("joining flower controller process...")
         flower_control_process.join()
+
         write_comment(comment_file)

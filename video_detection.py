@@ -7,13 +7,12 @@ from multiprocessing import Process, Event
 
 class Webcam(Process):
 
-    def __init__(self, recording, animal_departed, exit_event, message_queue, vtime_pipe):
+    def __init__(self, recording, animal_departed, exit_event, message_queue, parent_connection):
         self.recording = recording
         self.animal_departed = animal_departed
         self.exit_event = exit_event
         self.message_queue = message_queue
-        self.vtime_pipe = vtime_pipe
-
+        self.parent_connection, self.child_connection = multiprocessing.Pipe()
         self.animal_prnt = False
         self.firstFrame = None
         self.previous_image = None
@@ -33,7 +32,7 @@ class Webcam(Process):
 
     def begin(self):
         t.clock()
-        self.start_time = self.vtime_pipe.recv()
+        self.start_time = self.child_connection.recv()
         print("Video process starts at {}".format(self.start_time))
 
         # frame rate
@@ -167,23 +166,29 @@ class Webcam(Process):
 
 
     def run(self):
-        self.begin()
-        t3 = 0
-        while True:
-            t0 = t.clock()
-            if self.exit_event.is_set():
-                break
-            re1,img1 = self.cam.read()
-            t1 = t.clock()
-            self.simple_processing(img1)
-            t2 = t.clock()
-            while(t.clock() - t0 < 1/self.fps - 20e-3):
-                cv2.waitKey(20)
-            while(t.clock() - t0 < 1/self.fps):
-                pass
+        # Unhandled exceptions are caught, sent to main process,
+        # then the process waits to be terminated from main
+        try :
+            self.begin()
+            t3 = 0
+            while True:
+                t0 = t.clock()
+                if self.exit_event.is_set():
+                    break
+                re1,img1 = self.cam.read()
+                t1 = t.clock()
+                self.simple_processing(img1)
+                t2 = t.clock()
+                while(t.clock() - t0 < 1/self.fps - 20e-3):
+                    cv2.waitKey(20)
+                while(t.clock() - t0 < 1/self.fps):
+                    pass
 
-            t3 = t0
-        self.stop()
+                t3 = t0
+            self.stop()
+
+        except BaseException as e :
+            self.child_connection.send ( e )
 
     def stop(self):
         self.Mfile.close()

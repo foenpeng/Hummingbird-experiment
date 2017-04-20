@@ -25,7 +25,7 @@ DATA_FRAME_SIZE = 12
 """
 class FlowerController(Process):
 
-    def __init__(self,  recording, animal_departed, exit_event, message_queue, ftime_pipe,
+    def __init__(self,  recording, animal_departed, exit_event, message_queue,
                         controller_port,
                         injector_port,
                         accel_sample_freq = 1000):
@@ -37,7 +37,7 @@ class FlowerController(Process):
         self.recording = recording
         self.animal_departed = animal_departed
         self.exit_event = exit_event
-        self.ftime_pipe = ftime_pipe
+        self.parent_connection, self.child_connection = multiprocessing.Pipe()
 
         # IR Sensor hysteresis constants
         self.low_to_high = 220
@@ -80,7 +80,7 @@ class FlowerController(Process):
 
     def begin(self):
         t.clock()
-        self.start_time = self.ftime_pipe.recv()
+        self.start_time = self.child_connection.recv()
         print("Flower process starts at {}".format(self.start_time))
         self.message_queue.put(self.trial_path)
 
@@ -152,63 +152,71 @@ class FlowerController(Process):
         else:
             self.running = False
 
+    """
+    This function implements the running Loop of the
+    FlowerController thread. It waits for 3-byte frames
+    of data from the arduino and writes them to a separate
+    file based on the first byte, the code, of the data.
+    """
 
     def run(self):
-        """
-        This function implements the running Loop of the
-        FlowerController thread. It waits for 3-byte frames
-        of data from the arduino and writes them to a separate
-        file based on the first byte, the code, of the data.
-        """
 
-        self.begin()
-        self.controller.flushInput()
+        # Unhandled exceptions are caught, sent to main process,
+        # then the process waits to be terminated from main
+        try :
 
-        while True:
+            self.begin()
+            self.controller.flushInput()
 
-            if self.exit_event.is_set() :
-                if self.state == "recording":
-                    self.state = "processing"
-                    self.raw_files[-1]['stop time'] = round(t.clock()-self.start_time,4)
-                    self.raw_files[-1]['handle'].close()
-                print(self.raw_files)
-                while len(self.raw_files) > 0 :
-                    if self.raw_files :
-                        self.process_raw_data() # Process the remaining data
-                break
+            while True:
 
-            else :
+                if self.exit_event.is_set() :
+                    if self.state == "recording":
+                        self.state = "processing"
+                        self.raw_files[-1]['stop time'] = round(t.clock()-self.start_time,4)
+                        self.raw_files[-1]['handle'].close()
+                    print(self.raw_files)
+                    while len(self.raw_files) > 0 :
+                        if self.raw_files :
+                            self.process_raw_data() # Process the remaining data
+                    break
 
-                if self.recording.is_set() and self.state == "processing" :
-                    self.state = "recording"
-                    self.begin_raw_data_file()
+                else :
 
-                if self.recording.is_set() and self.state == "recording" :
-                    data = self.controller.read(24)
-                    nectar_value = self.parse_nectar_measurement(data)
-                    self.determine_nectar_state( nectar_value )
-                    self.raw_files[-1]['handle'].write(data)
+                    if self.recording.is_set() and self.state == "processing" :
+                        self.state = "recording"
+                        self.begin_raw_data_file()
 
-                if not self.recording.is_set() and self.state == "recording" :
-                    self.state = "processing"
-                    self.raw_files[-1]['stop time'] = round(t.clock()-self.start_time,4)
-                    self.raw_files[-1]['handle'].close()
+                    if self.recording.is_set() and self.state == "recording" :
+                        data = self.controller.read(24)
+                        nectar_value = self.parse_nectar_measurement(data)
+                        self.determine_nectar_state( nectar_value )
+                        self.raw_files[-1]['handle'].write(data)
+
+                    if not self.recording.is_set() and self.state == "recording" :
+                        self.state = "processing"
+                        self.raw_files[-1]['stop time'] = round(t.clock()-self.start_time,4)
+                        self.raw_files[-1]['handle'].close()
 
 
-                if not self.recording.is_set() and self.state == "processing" :
-                    if len(self.raw_files) > 0 :
-                        self.process_raw_data()
+                    if not self.recording.is_set() and self.state == "processing" :
+                        if len(self.raw_files) > 0 :
+                            self.process_raw_data()
 
-                if self.animal_departed.is_set() and not self.nct_prnt and \
-                not self.check_nectar_post_injection:
-                    time = self.inject()
-                    self.check_nectar_post_injection = True
-                    line = "1,{}\n".format(time)
-                    self.Efile.write(line)
-                    self.e_time = time
-                    self.animal_departed.clear()
+                    if self.animal_departed.is_set() and not self.nct_prnt and \
+                    not self.check_nectar_post_injection:
+                        time = self.inject()
+                        self.check_nectar_post_injection = True
+                        line = "1,{}\n".format(time)
+                        self.Efile.write(line)
+                        self.e_time = time
+                        self.animal_departed.clear()
 
-        self.stop()
+            self.stop()
+
+        # unhandled exceptions stop the process and are sent to the parent
+        except BaseException as e :
+            self.child_connection.send(e)
 
     def stop(self):
 
