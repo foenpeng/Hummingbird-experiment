@@ -1,6 +1,7 @@
 from tkinter.simpledialog import askstring
 import tkinter as tk
 
+
 DEFAULT_FLOWER_PORT = "COM3"
 DEFAULT_INJECTOR_PORT = "COM4"
 
@@ -61,10 +62,10 @@ class Gui ( ) :
         self.root.destroy()
 
     def get_flower_port ( self ) :
-        return self.flower_port_field.get('0.0', 'end')
+        return self.flower_port_field.get('0.0', 'end').rstrip('\n')
 
     def get_microinjector_port ( self ) :
-        return self.microinjector_port_field.get('0.0', 'end')
+        return self.microinjector_port_field.get('0.0', 'end').rstrip('\n')
 
 # Module unit tests
 if __name__ == "__main__" :
@@ -78,6 +79,6 @@ if __name__ == "__main__" :
         gui.stop()
 
     finally :
-        print ( gui.get_flower_port() )
-        print ( gui.get_microinjector_port() )
+        print ( bytearray(gui.get_flower_port(), 'ASCII') )
+        print ( bytearray(gui.get_microinjector_port(), 'ASCII') )
         pass
