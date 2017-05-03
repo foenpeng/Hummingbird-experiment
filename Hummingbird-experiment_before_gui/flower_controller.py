@@ -14,13 +14,15 @@ from multiprocessing import Process, Event, Queue
 DATA_FRAME_SIZE = 12
 
 """TODO
-1 I need to validate the time stamp on x, y, z, n file.
+1 z value does not seem correct
 2 add an injection event whenever the injector is at the starting
 3 how to edit all the files in real time so that if the program crashes, it still saved some files
 4 need to put nectar and injection information in video, how to pass data from child to child?
 5 check the logic of nectar detection
-6 the actual sampling frequencing is over 1k Hz. which leads to big difference between nectar empty time in e file and in n file     JOEY
+6 The x,y,z,n data always have ~1000 extra frames after the stop time is recorded in v file. And the value  - time does not match each other. A new visit will have n data from last visit.
 7 send me an email if something goes wrong!
+8 comment file did not write fully
+9 initial video ref frame did not work well
 
 """
 class FlowerController(Process):
@@ -59,8 +61,6 @@ class FlowerController(Process):
         self.check_nectar_post_injection = False
         self.start_time = None
         self.e_time = 0
-        self.read_times = 0
-        self.prev_nectar = None
         self.state = "processing"
         self.controller_port = controller_port
         self.injector_port = injector_port
@@ -165,6 +165,8 @@ class FlowerController(Process):
 
         self.begin()
         self.controller.flushInput()
+        nectar_queue = []
+        nectar_max = 0
 
         while True:
 
@@ -188,15 +190,13 @@ class FlowerController(Process):
                 if self.recording.is_set() and self.state == "recording" :
                     data = self.controller.read(24)
                     self.raw_files[-1]['handle'].write(data)
-                    self.read_times += 1
-                    if self.read_times % 25 == 0: #if there is greater than 10 changes in 0.05 secs
-                        nectar_value = self.parse_nectar_measurement(data)
-                        if self.prev_nectar is None:
-                            self.prev_nectar = nectar_value
-                        else:
-                            self.determine_nectar_state( nectar_value,self.prev_nectar)
-                            self.prev_nectar = nectar_value
-                            self.read_times = 0
+
+                    nectar_value = self.parse_nectar_measurement(data)
+                    nectar_queue.append(nectar_value)
+                    if len(nectar_queue) == 25:
+                        nectar_max = max(nectar_queue[:-1])
+                        self.determine_nectar_state( nectar_value,nectar_max)
+                        del nectar_queue[0]
 
 
                 if not self.recording.is_set() and self.state == "recording" :
@@ -242,6 +242,7 @@ class FlowerController(Process):
 
         try:
             commentfile = self.trial_path + "/comments.txt"
+            print("open comment file")
 
             filename = open(commentfile, 'w')
             filename.write("Flower morphology tested: \n")
@@ -288,7 +289,7 @@ class FlowerController(Process):
 
 
 
-    def determine_nectar_state( self, nectar_value, prev_nectar ) :
+    def determine_nectar_state( self, nectar_value, nectar_max) :
         """ Determines whether the beam has been blocked or not, based on the ADC value,
             and the two hysteresis thresholds, self.high_to_low and self.low_to_high
         """
@@ -297,7 +298,7 @@ class FlowerController(Process):
                 toc = round((t.clock()-self.start_time),3)
                 if toc - self.e_time > 1:
 
-                    if (self.nct_prnt == True) and (nectar_value - prev_nectar > 10) :
+                    if (self.nct_prnt == True) and (nectar_value - nectar_max >= 10) :
                         self.nct_prnt = False
                         print("Nectar emptied at time stamp {0} \n".format(toc))
                         line = "0,{0}\n".format(toc)
@@ -311,16 +312,20 @@ class FlowerController(Process):
         for later processing.
         """
         self.rawfilename = self.trial_path + "/raw_data_{}.txt".format(len(self.raw_files)+1)
-        try :
-            self.raw_files.append( {
-                                    'handle' : open(self.rawfilename, 'wb'),
-                                    'size'   : 0,
-                                    'start time' : round(t.clock()-self.start_time,4),
-                                    'stop time'  : None,
-                                    'frame count': 0 } )
-        except BaseException:
-            self.exit_event.set()
-            print("flower controller failed to open file or writing")
+        while True:
+            try :
+                self.raw_files.append( {
+                                        'handle' : open(self.rawfilename, 'wb'),
+                                        'size'   : 0,
+                                        'start time' : round(t.clock()-self.start_time,4),
+                                        'stop time'  : None,
+                                        'frame count': 0 } )
+            except BaseException:
+                #self.exit_event.set()
+                print("flower controller failed to open file for writing")
+                t.sleep(0.1)
+                continue
+            break
 
     def process_raw_data ( self ) :
 
