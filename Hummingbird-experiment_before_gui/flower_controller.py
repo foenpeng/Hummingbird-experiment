@@ -165,8 +165,7 @@ class FlowerController(Process):
 
         self.begin()
         self.controller.flushInput()
-        nectar_queue = []
-        nectar_max = 0
+
 
         while True:
 
@@ -186,6 +185,9 @@ class FlowerController(Process):
                 if self.recording.is_set() and self.state == "processing" :
                     self.state = "recording"
                     self.begin_raw_data_file()
+                    nectar_queue = []
+                    nectar_min = 0
+
 
                 if self.recording.is_set() and self.state == "recording" :
                     data = self.controller.read(24)
@@ -193,9 +195,9 @@ class FlowerController(Process):
 
                     nectar_value = self.parse_nectar_measurement(data)
                     nectar_queue.append(nectar_value)
-                    if len(nectar_queue) == 25:
-                        nectar_max = max(nectar_queue[:-1])
-                        self.determine_nectar_state( nectar_value,nectar_max)
+                    if len(nectar_queue) >= 25:
+                        nectar_min = min(nectar_queue)
+                        self.determine_nectar_state( nectar_value,nectar_min)
                         del nectar_queue[0]
 
 
@@ -289,7 +291,7 @@ class FlowerController(Process):
 
 
 
-    def determine_nectar_state( self, nectar_value, nectar_max) :
+    def determine_nectar_state( self, nectar_value, nectar_min) :
         """ Determines whether the beam has been blocked or not, based on the ADC value,
             and the two hysteresis thresholds, self.high_to_low and self.low_to_high
         """
@@ -298,7 +300,7 @@ class FlowerController(Process):
                 toc = round((t.clock()-self.start_time),3)
                 if toc - self.e_time > 1:
 
-                    if (self.nct_prnt == True) and (nectar_value - nectar_max >= 10) :
+                    if (self.nct_prnt == True) and (nectar_value - nectar_min >= 10) :
                         self.nct_prnt = False
                         print("Nectar emptied at time stamp {0} \n".format(toc))
                         line = "0,{0}\n".format(toc)
@@ -312,20 +314,19 @@ class FlowerController(Process):
         for later processing.
         """
         self.rawfilename = self.trial_path + "/raw_data_{}.txt".format(len(self.raw_files)+1)
-        while True:
-            try :
-                self.raw_files.append( {
-                                        'handle' : open(self.rawfilename, 'wb'),
-                                        'size'   : 0,
-                                        'start time' : round(t.clock()-self.start_time,4),
-                                        'stop time'  : None,
-                                        'frame count': 0 } )
-            except BaseException:
-                #self.exit_event.set()
-                print("flower controller failed to open file for writing")
-                t.sleep(0.1)
-                continue
-            break
+        try :
+            current_rawfile = open(self.rawfilename, 'ab')
+            self.raw_files.append( {'handle' : current_rawfile,
+                                    'size'   : 0,
+                                    'start time' : round(t.clock()-self.start_time,4),
+                                    'stop time'  : None,
+                                    'frame count': 0 } )
+
+        except BaseException:
+            #self.exit_event.set()
+            print("flower controller failed to open file for writing")
+
+
 
     def process_raw_data ( self ) :
 
