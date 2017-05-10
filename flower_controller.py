@@ -9,7 +9,7 @@ import sys
 import serial as s
 import time as t
 from datetime import date
-from multiprocessing import Process, Event, Queue
+from multiprocessing import Process, Event, Queue, Pipe
 
 DATA_FRAME_SIZE = 12
 
@@ -37,7 +37,7 @@ class FlowerController(Process):
         self.recording = recording
         self.animal_departed = animal_departed
         self.exit_event = exit_event
-        self.parent_connection, self.child_connection = multiprocessing.Pipe()
+        self.parent_connection, self.child_connection = Pipe()
 
         # IR Sensor hysteresis constants
         self.low_to_high = 220

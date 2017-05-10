@@ -3,16 +3,16 @@ import time as t
 import datetime
 import numpy as np
 import copy
-from multiprocessing import Process, Event
+from multiprocessing import Process, Event, Pipe
 
 class Webcam(Process):
 
-    def __init__(self, recording, animal_departed, exit_event, message_queue, parent_connection):
+    def __init__(self, recording, animal_departed, exit_event, message_queue):
         self.recording = recording
         self.animal_departed = animal_departed
         self.exit_event = exit_event
         self.message_queue = message_queue
-        self.parent_connection, self.child_connection = multiprocessing.Pipe()
+        self.parent_connection, self.child_connection = Pipe()
         self.animal_prnt = False
         self.firstFrame = None
         self.previous_image = None

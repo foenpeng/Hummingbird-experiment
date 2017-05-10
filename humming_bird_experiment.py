@@ -2,6 +2,7 @@ import multiprocessing
 import time
 import requests
 import sys
+import traceback
 
 def send_message(error_message):
     return requests.post(
@@ -41,7 +42,8 @@ if __name__ == "__main__" :
     from gui import Gui
     gui = Gui()
 
-    while not gui.start_event : pass
+    while not gui.start_event :
+        gui.update()
 
     # IPC Objects for signaling and passing data between child processes
     recording = multiprocessing.Event()
@@ -51,8 +53,8 @@ if __name__ == "__main__" :
 
     from flower_controller import FlowerController
 
-    port1 = Gui.get_flower_port()
-    port2 = Gui.get_microinjector_port()
+    port1 = gui.get_flower_port()
+    port2 = gui.get_microinjector_port()
 
     flower_control_process = FlowerController(  recording, animal_departed,
                                                 exit_event, message_queue,
@@ -65,52 +67,57 @@ if __name__ == "__main__" :
 
 
     # Running block - catch exceptions here and then tear down the program.
-    else :
 
-        flower_control_process.parent_connection.send(round(time.clock(),4))
-        flower_control_process.start()
+    flower_control_process.parent_connection.send(round(time.clock(),4))
+    flower_control_process.start()
 
-        webcam_process.parent_connection.send(round(time.clock(),4))
-        webcam_process.start()
+    webcam_process.parent_connection.send(round(time.clock(),4))
+    webcam_process.start()
 
-        trial_path = flower_control_process.message_queue.get()
+    trial_path = flower_control_process.message_queue.get()
 
-        while not gui.stop_event :
-            # Checks for runtime exceptions encountered in the child processes
-            if flower_control_process.parent_connection.poll(1.e-1) :
+    while not gui.stop_event :
 
-                obj = flower_control_process.parent_connection.recv()
+        gui.update()
 
-                # If a runtime exception occurred, join the other process and exit
-                if isinstance( obj, BaseException ) :
+        # Checks for runtime exceptions encountered in the child processes
+        if flower_control_process.parent_connection.poll(1.e-1) :
 
-                    message = "Runtime exception occurred in flower control process\n" + \
-                    str ( obj )
-                    send_message(message)
+            obj = flower_control_process.parent_connection.recv()
 
-                    flower_control_process.terminate()
+            # If a runtime exception occurred, join the other process and exit
+            if isinstance( obj, BaseException ) :
+                print(obj.args)
+                message = "Runtime exception occurred in flower control process\n" + \
+                str ( obj ) + "\n"
+                # traceback.format_exception(None, obj, obj.__traceback__)
+                # send_message(message)
+                print(type(obj))
+                flower_control_process.terminate()
 
-                    exit_event.set()
-                    webcam_process.join()
+                exit_event.set()
+                webcam_process.join()
 
-                    sys.exit(1)
+                sys.exit(1)
 
-            else if webcam_process.parent_connection.poll(1.e-1) :
+        elif webcam_process.parent_connection.poll(1.e-1) :
 
-                obj = webcam_process.parent_connection.recv()
+            obj = webcam_process.parent_connection.recv()
 
-                if isinstance( obj, BaseException ) :
+            if isinstance( obj, BaseException ) :
 
-                    message = "Runtime exception occurred in webcam process\n" + \
-                    str ( obj )
-                    send_message(message)
+                message = "Runtime exception occurred in webcam process\n" + \
+                str ( obj ) + "\n"
+                # traceback.format_exception(None, obj, obj.__traceback__)
+                print(obj.args)
+                # send_message(message)
 
-                    webcam_process.terminate()
+                webcam_process.terminate()
 
-                    exit_event.set()
-                    flower_control_process.join()
+                exit_event.set()
+                flower_control_process.join()
 
-                    sys.exit(1)
+                sys.exit(1)
 
 
         exit_event.set()
