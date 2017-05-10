@@ -16,12 +16,8 @@ DATA_FRAME_SIZE = 12
 """TODO
 1 I need to validate the time stamp on x, y, z, n file.
 2 add an injection event whenever the injector is at the starting
-3 how to edit all the files in real time so that if the program crashes, it still saved some files
 4 need to put nectar and injection information in video, how to pass data from child to child?
 5 check the logic of nectar detection
-6 the actual sampling frequencing is over 1k Hz. which leads to big difference between nectar empty time in e file and in n file     JOEY
-7 send me an email if something goes wrong!
-
 """
 class FlowerController(Process):
 
@@ -168,47 +164,37 @@ class FlowerController(Process):
             self.begin()
             self.controller.flushInput()
 
-            while True:
+            while self.running:
 
                 if self.exit_event.is_set() :
-                    if self.state == "recording":
-                        self.state = "processing"
+                    if self.recording.is_set() :
                         self.raw_files[-1]['stop time'] = round(t.clock()-self.start_time,4)
                         self.raw_files[-1]['handle'].close()
-                    print(self.raw_files)
-                    while len(self.raw_files) > 0 :
-                        if self.raw_files :
-                            self.process_raw_data() # Process the remaining data
-                    break
+                        self.running = False
 
-                else :
-
-                    if self.recording.is_set() and self.state == "processing" :
-                        self.state = "recording"
+                elif self.recording.is_set() :
+                    if len(self.raw_files) == 0 or self.raw_files[-1]['handle'].closed :
                         self.begin_raw_data_file()
 
-                    if self.recording.is_set() and self.state == "recording" :
-                        data = self.controller.read(24)
-                        nectar_value = self.parse_nectar_measurement(data)
-                        self.determine_nectar_state( nectar_value )
-                        self.raw_files[-1]['handle'].write(data)
+                    data = self.controller.read(24)
 
-                    if not self.recording.is_set() and self.state == "recording" :
-                        self.state = "processing"
+                    nectar_value = self.parse_nectar_measurement(data)
+                    self.determine_nectar_state( nectar_value )
+
+                    self.raw_files[-1]['handle'].write(data)
+
+                elif self.animal_departed.is_set() :
+                    if len(self.raw_files) > 0 or not self.raw_files[-1]['handle'].closed :
                         self.raw_files[-1]['stop time'] = round(t.clock()-self.start_time,4)
                         self.raw_files[-1]['handle'].close()
 
-
-                    if not self.recording.is_set() and self.state == "processing" :
-                        if len(self.raw_files) > 0 :
-                            self.process_raw_data()
-
-                    if self.animal_departed.is_set() and not self.nct_prnt and \
-                    not self.check_nectar_post_injection:
+                    if not self.nct_prnt and not self.check_nectar_post_injection :
                         time = self.inject()
                         self.check_nectar_post_injection = True
+
                         line = "1,{}\n".format(time)
                         self.Efile.write(line)
+
                         self.e_time = time
                         self.animal_departed.clear()
 
@@ -230,6 +216,8 @@ class FlowerController(Process):
 
         # Fix the time overflow issue
         self.exit_time = round((t.clock()-self.start_time),2)
+
+        self.process_raw_data()
 
         self.Xfile.close()
         self.Yfile.close()
@@ -322,65 +310,65 @@ class FlowerController(Process):
                                     'start time' : round(t.clock()-self.start_time,4),
                                     'stop time'  : None,
                                     'frame count': 0 } )
+            start_time = str( self.raw_files[-1]['start time']) + '\n'
+            self.raw_files[-1]['handle'].write ( start_time )
+
         except BaseException:
             self.exit_event.set()
             raise ("flower controller failed to open file or writing")
 
     def process_raw_data ( self ) :
 
-        # If no file is current being processed, open the next file
-        if self.raw_files[0]['handle'].closed :
-            print("opening raw file...")
-            self.raw_files[0]['handle'] = open( self.raw_files[0]['handle'].name, 'rb' )
+        for raw_file in self.raw_files :
+            raw_file['handle'].open('r')
+            start_time = float ( raw_file['handle'].readline() )
 
-        # Processing the file
-        if not self.raw_files[0]['handle'].closed:
-            #print("processing raw file...")
-            try:
-                # grap next frame of data
-                data = bytearray()
-                data += self.raw_files[0]['handle'].read(12)
+            while not raw_file['handle'].closed :
+                try:
+                    data = bytearray()
+                    data += self.raw_files[0]['handle'].read(12)
 
-                if len(data) < 12 :
-                    self.close_raw_file()
-                    return
-
-                while not self.locate_frame ( 0, data ) :
-                    data.pop(0)
-                    byte = self.raw_files[0]['handle'].read(1)
-                    if byte != bytearray() :
-                        data += byte
-                    else:
+                    if len(data) < 12 :
                         self.close_raw_file()
-                        return
+                        break
 
-                self.raw_files[0]['frame count'] += 1
+                    while not self.locate_frame ( 0, data ) :
+                        data.pop(0)
+                        byte = self.raw_files[0]['handle'].read(1)
+                        if byte != bytearray() :
+                            data += byte
+                        else:
+                            self.close_raw_file()
+                            break
 
-                # Determine timestamp of this sample
-                timestamp = round(self.raw_files[0]['start time'] + (self.raw_files[0]['frame count'] - 1.) / self.accel_sample_freq, 4)
+                    self.raw_files[0]['frame count'] += 1
 
-                # Write the X value and timestamp to the CSV file
-                value = data[1]
-                line = "{0},{1}\n".format(value,timestamp)
-                self.Xfile.write(line)
+                    # Determine timestamp of this sample
+                    timestamp = round(self.raw_files[0]['start time'] + \
+                    (self.raw_files[0]['frame count'] - 1.) / self.accel_sample_freq, 4)
 
-                # Write the Y value and timestamp to the CSV file
-                value = data[4]
-                line = "{0},{1}\n".format(value,timestamp)
-                self.Yfile.write(line)
+                    # Write the X value and timestamp to the CSV file
+                    value = data[1]
+                    line = "{0},{1}\n".format(value,timestamp)
+                    self.Xfile.write(line)
 
-                # Write the Z value and timestamp to the CSV file
-                value = data[7]
-                line = "{0},{1}\n".format(value,timestamp)
-                self.Zfile.write(line)
+                    # Write the Y value and timestamp to the CSV file
+                    value = data[4]
+                    line = "{0},{1}\n".format(value,timestamp)
+                    self.Yfile.write(line)
 
-                # Write the N value and timestamp to the CSV file
-                value = data[10]
-                line = "{0},{1}\n".format(value,timestamp)
-                self.Nfile.write(line)
+                    # Write the Z value and timestamp to the CSV file
+                    value = data[7]
+                    line = "{0},{1}\n".format(value,timestamp)
+                    self.Zfile.write(line)
 
-            except BaseException as e :
-                print("exception occurred: " + e)
+                    # Write the N value and timestamp to the CSV file
+                    value = data[10]
+                    line = "{0},{1}\n".format(value,timestamp)
+                    self.Nfile.write(line)
+
+                except BaseException as e :
+                    print("exception occurred: " + e)
 
 
 
