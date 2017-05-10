@@ -196,7 +196,7 @@ void loop() {
    sample_send_y();
    sample_send_z();
    sample_send_n();
-   
+
   }
   // DEBUGGING CODE
 //  Serial.println(analogRead(LIQUID_SENSE_PIN));
@@ -221,16 +221,11 @@ void sample_send_x(){
     while(!(UCSR0A&(1<<TXC0)));
     UCSR0A |= (1<<TXC0);
 
-    // Send time stamp
-    UDR0 = (unsigned char)tbase1;
-    while(!(UCSR0A&(1<<TXC0)));
-    UCSR0A |= (1<<TXC0);
-    /*
     // Send stop byte
     UDR0 = '\n';
     while(!(UCSR0A&(1<<TXC0)));
     UCSR0A |= (1<<TXC0);
-    */
+
   }
 }
 void sample_send_y(){
@@ -250,17 +245,11 @@ void sample_send_y(){
     while(!(UCSR0A&(1<<TXC0)));
     UCSR0A |= (1<<TXC0);
 
-
-    // Send time stamp
-    UDR0 = (unsigned char)tbase1;
-    while(!(UCSR0A&(1<<TXC0)));
-    UCSR0A |= (1<<TXC0);
-    /*
     // Send stop byte
     UDR0 = '\n';
     while(!(UCSR0A&(1<<TXC0)));
     UCSR0A |= (1<<TXC0);
-    */
+
   }
 }
 void sample_send_z(){
@@ -280,16 +269,11 @@ void sample_send_z(){
     while(!(UCSR0A&(1<<TXC0)));
     UCSR0A |= (1<<TXC0);
 
-    // Send time stamp
-    UDR0 = (unsigned char)tbase1;
-    while(!(UCSR0A&(1<<TXC0)));
-    UCSR0A |= (1<<TXC0);
-    /*
     // Send stop byte
     UDR0 = '\n';
     while(!(UCSR0A&(1<<TXC0)));
     UCSR0A |= (1<<TXC0);
-    */
+
   }
 }
 void sample_send_n(){
@@ -311,16 +295,10 @@ void sample_send_n(){
       while(!(UCSR0A&(1<<TXC0)));
       UCSR0A |= (1<<TXC0);
 
-
-      // Send time stamp
-      UDR0 = (unsigned char)tbase1;
-      while(!(UCSR0A&(1<<TXC0)));
-      UCSR0A |= (1<<TXC0);
-      /*
       // Send stop byte
       UDR0 = '\n';
       while(!(UCSR0A&(1<<TXC0)));
       UCSR0A |= (1<<TXC0);
-      */
+
   }
 }
