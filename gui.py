@@ -2,7 +2,7 @@ from tkinter.simpledialog import askstring
 import tkinter as tk
 
 DEFAULT_INJECTOR_PORT = "COM4"
-
+DEFAULT_FLOWER_PORT = "COM7"
 class Gui ( ) :
     """
 
@@ -54,6 +54,7 @@ class Gui ( ) :
 
 
         elif self.start_button['text'] == "Stop" :
+            print("stop button clicked")
             self.stop_event = True
 
     def stop ( self ) :

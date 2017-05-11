@@ -49,81 +49,66 @@ if __name__ == "__main__" :
     recording = multiprocessing.Event()
     animal_departed = multiprocessing.Event()
     exit_event = multiprocessing.Event()
-    message_queue = multiprocessing.Queue()
 
     from flower_controller import FlowerController
 
     port1 = gui.get_flower_port()
     port2 = gui.get_microinjector_port()
-
-    flower_control_process = FlowerController(  recording, animal_departed,
-                                                exit_event, message_queue,
+    
+    print("initializing flower control process")
+    flower_control_process = FlowerController(  recording, 
+                                                animal_departed,
+                                                exit_event,
                                                 controller_port = port1,
                                                 injector_port = port2   )
+                                                
+    trial_path = flower_control_process.trial_path
 
-
+    print("initializing webcam process")
     from video_detection import Webcam
-    webcam_process = Webcam(recording, animal_departed, exit_event, message_queue)
+    webcam_process = Webcam(recording, animal_departed, exit_event)
 
 
     # Running block - catch exceptions here and then tear down the program.
 
     flower_control_process.parent_connection.send(round(time.clock(),4))
+    print("starting flower control process")
     flower_control_process.start()
 
     webcam_process.parent_connection.send(round(time.clock(),4))
+    webcam_process.parent_connection.send(trial_path)
+    print("starting webcam process")
     webcam_process.start()
 
-    trial_path = flower_control_process.message_queue.get()
-
     while not gui.stop_event :
-
+    
         gui.update()
-
+        sys.stdout.flush()
+        
         # Checks for runtime exceptions encountered in the child processes
-        if flower_control_process.parent_connection.poll(1.e-1) :
-
+        if flower_control_process.parent_connection.poll() :
             obj = flower_control_process.parent_connection.recv()
-
-            # If a runtime exception occurred, join the other process and exit
+            
             if isinstance( obj, BaseException ) :
-                print(obj.args)
                 message = "Runtime exception occurred in flower control process\n" + \
                 str ( obj ) + "\n"
-                # traceback.format_exception(None, obj, obj.__traceback__)
-                # send_message(message)
-                print(type(obj))
-                flower_control_process.terminate()
-
-                exit_event.set()
-                webcam_process.join()
-
-                sys.exit(1)
-
-        elif webcam_process.parent_connection.poll(1.e-1) :
-
+                print(message)
+                break
+                
+        if webcam_process.parent_connection.poll() :
             obj = webcam_process.parent_connection.recv()
-
+            
             if isinstance( obj, BaseException ) :
-
                 message = "Runtime exception occurred in webcam process\n" + \
                 str ( obj ) + "\n"
-                # traceback.format_exception(None, obj, obj.__traceback__)
-                print(obj.args)
-                # send_message(message)
+                print(message)
+                break
+                
+    gui.stop()
+    exit_event.set()
+    comment_file = trial_path  + "/comments.txt"
 
-                webcam_process.terminate()
+    webcam_process.join()
+    flower_control_process.join()
 
-                exit_event.set()
-                flower_control_process.join()
-
-                sys.exit(1)
-
-
-        exit_event.set()
-        comment_file = trial_path  + "/comments.txt"
-
-        webcam_process.join()
-        flower_control_process.join()
-
-        write_comment(comment_file)
+    write_comment(comment_file)

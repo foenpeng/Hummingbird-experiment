@@ -8,6 +8,7 @@ import os
 import sys
 import serial as s
 import time as t
+import traceback
 from datetime import date
 from multiprocessing import Process, Event, Queue, Pipe
 
@@ -21,7 +22,9 @@ DATA_FRAME_SIZE = 12
 """
 class FlowerController(Process):
 
-    def __init__(self,  recording, animal_departed, exit_event, message_queue,
+    def __init__(self,  recording, 
+                        animal_departed,
+                        exit_event,
                         controller_port,
                         injector_port,
                         accel_sample_freq = 1000):
@@ -63,29 +66,28 @@ class FlowerController(Process):
 
         # Making a directory for the morph and pass its address into a queue
         self.morph = str(input("Which morphology is it?\n")) + "l070r1.5R025v020p000"
-        self.morph_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/Data Files/" + self.morph
-        if not os.path.exists(self.morph_path):
-           os.makedirs(self.morph_path)
-
-        today = date.today()
+        
+        self.morph_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "\\Data Files\\" + self.morph
+            
+        today = date.today()    
         now = datetime.datetime.now()
-        self.folder = str(today)+ "_" + str(now.hour)+ "_" + str(now.minute) +"_" + self.morph
-        self.trial_path = self.morph_path + "/" + self.folder
-        self.message_queue = message_queue
-        self.message_queue.put(self.trial_path)
-
-    def begin(self):
-        t.clock()
-        self.start_time = self.child_connection.recv()
-        print("Flower process starts at {}".format(self.start_time))
-        self.message_queue.put(self.trial_path)
+        self.folder = str(today)+ "_" + str(now.hour)+ "_" + str(now.minute)
+        self.trial_path = self.morph_path + "\\" + self.folder
 
         # Make a working directory to ouput data files
         try:
-            os.mkdir(self.trial_path)
-        except:
+            os.makedirs(self.trial_path)
+        except BaseException as e:
             print("failed to make working directory " + self.trial_path + "\n")
-
+            raise
+            
+    def begin(self):
+        t.clock()
+        
+        self.start_time = self.child_connection.recv()
+        print("Flower process starts at {}".format(self.start_time))
+        sys.stdout.flush()
+        
         # Open output files in working directory
         self.Xfilename = self.trial_path + "/" + self.Xfilename
         self.Yfilename = self.trial_path + "/" + self.Yfilename
@@ -96,58 +98,41 @@ class FlowerController(Process):
         self.Vfilename = self.trial_path + "/" + self.Vfilename
 
         # Open the two serial ports
-        try:
-            # Open ports at 1Mbit/sec
-            self.controller = s.Serial(self.controller_port,
-                                    1000000,
-                                    timeout = 1)
+        self.controller = s.Serial(self.controller_port,
+                                1000000,
+                                timeout = 1)
 
-            self.injector = s.Serial(self.injector_port,
-                                     115200,
-                                     timeout = 1)
-            success = True
+        
 
-            # Assert Data Terminal Ready signal to reset Arduino
-            self.controller.rtscts = True
-            self.injector.rtscts = True
-            self.controller.dtr = True
-            self.injector.dtr = True
-            t.sleep(1)
-            self.controller.dtr = False
-            self.injector.dtr = False
-            t.sleep(2)
+        self.injector = s.Serial(self.injector_port,
+                                 115200,
+                                 timeout = 1)
 
-        except s.SerialException:
-            success = False
-            print("Failed to open one of the ports")
-            raise(s.SerialException)
+        success = True
 
-        if success:
-            try:
-                # Open output files for writing
-                self.Xfile = open(self.Xfilename, 'w')
-                self.Yfile = open(self.Yfilename, 'w')
-                self.Zfile = open(self.Zfilename, 'w')
-                self.Nfile = open(self.Nfilename, 'w')
-                self.Efile = open(self.Efilename, 'w')
-                self.Ifile = open(self.Ifilename, 'w')
-                self.Vfile = open(self.Vfilename, 'w')
+        # Assert Data Terminal Ready signal to reset Arduino
+        self.controller.rtscts = True
+        self.injector.rtscts = True
+        self.controller.dtr = True
+        self.injector.dtr = True
+        t.sleep(1)
+        self.controller.dtr = False
+        self.injector.dtr = False
+        t.sleep(2)
 
-                # Send samples rates and start command
-                cmd = bytearray("{0}\n".format(self.accel_sample_freq), 'ascii')
-                self.controller.write(cmd)
-                success = True
+        # Open output files for writing
+        self.Xfile = open(self.Xfilename, 'w')
+        self.Yfile = open(self.Yfilename, 'w')
+        self.Zfile = open(self.Zfilename, 'w')
+        self.Nfile = open(self.Nfilename, 'w')
+        self.Efile = open(self.Efilename, 'w')
+        self.Ifile = open(self.Ifilename, 'w')
+        self.Vfile = open(self.Vfilename, 'w')
 
-            except BaseException as e:
-                success = False
-                raise(e)
-
-        if success:
-            self.running = True
-
-        else:
-            self.running = False
-
+        # Send samples rates and start command
+        cmd = bytearray("{0}\n".format(self.accel_sample_freq), 'ascii')
+        self.controller.write(cmd)
+        
     """
     This function implements the running Loop of the
     FlowerController thread. It waits for 3-byte frames
@@ -157,20 +142,17 @@ class FlowerController(Process):
 
     def run(self):
 
-        # Unhandled exceptions are caught, sent to main process,
-        # then the process waits to be terminated from main
         try :
 
             self.begin()
             self.controller.flushInput()
 
-            while self.running:
-
+            while True:
                 if self.exit_event.is_set() :
                     if self.recording.is_set() :
                         self.raw_files[-1]['stop time'] = round(t.clock()-self.start_time,4)
                         self.raw_files[-1]['handle'].close()
-                        self.running = False
+                    break
 
                 elif self.recording.is_set() :
                     if len(self.raw_files) == 0 or self.raw_files[-1]['handle'].closed :
@@ -184,7 +166,7 @@ class FlowerController(Process):
                     self.raw_files[-1]['handle'].write(data)
 
                 elif self.animal_departed.is_set() :
-                    if len(self.raw_files) > 0 or not self.raw_files[-1]['handle'].closed :
+                    if len(self.raw_files) > 0 and not self.raw_files[-1]['handle'].closed :
                         self.raw_files[-1]['stop time'] = round(t.clock()-self.start_time,4)
                         self.raw_files[-1]['handle'].close()
 
@@ -198,11 +180,13 @@ class FlowerController(Process):
                         self.e_time = time
                         self.animal_departed.clear()
 
-            self.stop()
-
         # unhandled exceptions stop the process and are sent to the parent
         except BaseException as e :
             self.child_connection.send(e)
+            raise
+            
+        finally :
+            self.stop()
 
     def stop(self):
 
@@ -303,82 +287,75 @@ class FlowerController(Process):
         for later processing.
         """
         self.rawfilename = self.trial_path + "/raw_data_{}".format(len(self.raw_files)+1)
-        try :
-            self.raw_files.append( {
-                                    'handle' : open(self.rawfilename, 'a+b'),
-                                    'size'   : 0,
-                                    'start time' : round(t.clock()-self.start_time,4),
-                                    'stop time'  : None,
-                                    'frame count': 0 } )
-            start_time = str( self.raw_files[-1]['start time']) + '\n'
-            self.raw_files[-1]['handle'].write ( start_time )
-
-        except BaseException:
-            self.exit_event.set()
-            raise ("flower controller failed to open file or writing")
+        
+        self.raw_files.append( {
+                                'handle' : open(self.rawfilename, 'wb'),
+                                'size'   : 0,
+                                'start time' : round(t.clock()-self.start_time,4),
+                                'stop time'  : None,
+                                'frame count': 0 } )
+                                
+        start_time = str( self.raw_files[-1]['start time']) + '\n'
+        self.raw_files[-1]['handle'].write ( bytearray(start_time, 'ASCII') )
 
     def process_raw_data ( self ) :
 
         for raw_file in self.raw_files :
-            raw_file['handle'].open('r')
+            raw_file['handle'] = open ( raw_file['handle'].name, 'rb' )
             start_time = float ( raw_file['handle'].readline() )
 
             while not raw_file['handle'].closed :
-                try:
-                    data = bytearray()
-                    data += self.raw_files[0]['handle'].read(12)
 
-                    if len(data) < 12 :
-                        self.close_raw_file()
+                data = bytearray()
+                data += raw_file['handle'].read(12)
+
+                if len(data) < 12 :
+                    self.close_raw_file(raw_file)
+                    break
+
+                while not self.locate_frame ( 0, data ) :
+                    data.pop(0)
+                    byte = raw_file['handle'].read(1)
+                    if byte != bytearray() :
+                        data += byte
+                    else:
+                        self.close_raw_file(raw_file)
                         break
 
-                    while not self.locate_frame ( 0, data ) :
-                        data.pop(0)
-                        byte = self.raw_files[0]['handle'].read(1)
-                        if byte != bytearray() :
-                            data += byte
-                        else:
-                            self.close_raw_file()
-                            break
+                raw_file['frame count'] += 1
 
-                    self.raw_files[0]['frame count'] += 1
+                # Determine timestamp of this sample
+                timestamp = round(raw_file['start time'] + \
+                (raw_file['frame count'] - 1.) / self.accel_sample_freq, 4)
 
-                    # Determine timestamp of this sample
-                    timestamp = round(self.raw_files[0]['start time'] + \
-                    (self.raw_files[0]['frame count'] - 1.) / self.accel_sample_freq, 4)
+                # Write the X value and timestamp to the CSV file
+                value = data[1]
+                line = "{0},{1}\n".format(value,timestamp)
+                self.Xfile.write(line)
 
-                    # Write the X value and timestamp to the CSV file
-                    value = data[1]
-                    line = "{0},{1}\n".format(value,timestamp)
-                    self.Xfile.write(line)
+                # Write the Y value and timestamp to the CSV file
+                value = data[4]
+                line = "{0},{1}\n".format(value,timestamp)
+                self.Yfile.write(line)
 
-                    # Write the Y value and timestamp to the CSV file
-                    value = data[4]
-                    line = "{0},{1}\n".format(value,timestamp)
-                    self.Yfile.write(line)
+                # Write the Z value and timestamp to the CSV file
+                value = data[7]
+                line = "{0},{1}\n".format(value,timestamp)
+                self.Zfile.write(line)
 
-                    # Write the Z value and timestamp to the CSV file
-                    value = data[7]
-                    line = "{0},{1}\n".format(value,timestamp)
-                    self.Zfile.write(line)
-
-                    # Write the N value and timestamp to the CSV file
-                    value = data[10]
-                    line = "{0},{1}\n".format(value,timestamp)
-                    self.Nfile.write(line)
-
-                except BaseException as e :
-                    print("exception occurred: " + e)
+                # Write the N value and timestamp to the CSV file
+                value = data[10]
+                line = "{0},{1}\n".format(value,timestamp)
+                self.Nfile.write(line)
 
 
 
-    def close_raw_file(self) :
-        line = "{0},{1},{2}\n".format(self.raw_files[0]['start time'],self.raw_files[0]['stop time'],self.raw_files[0]['frame count'])
+    def close_raw_file(self, raw_file) :
+        line = "{0},{1},{2}\n".format(raw_file['start time'],raw_file['stop time'],raw_file['frame count'])
         self.Vfile.write(line)
-        self.raw_files[0]['handle'].close()
-        os.remove(self.raw_files[0]['handle'].name)
+        raw_file['handle'].close()
+        os.remove(raw_file['handle'].name)
         print("rawfile removed")
-        self.raw_files.pop(0)
 
 
     def inject(self):

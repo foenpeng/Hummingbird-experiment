@@ -3,15 +3,15 @@ import time as t
 import datetime
 import numpy as np
 import copy
+import sys
 from multiprocessing import Process, Event, Pipe
 
 class Webcam(Process):
 
-    def __init__(self, recording, animal_departed, exit_event, message_queue):
+    def __init__(self, recording, animal_departed, exit_event):
         self.recording = recording
         self.animal_departed = animal_departed
         self.exit_event = exit_event
-        self.message_queue = message_queue
         self.parent_connection, self.child_connection = Pipe()
         self.animal_prnt = False
         self.firstFrame = None
@@ -34,18 +34,18 @@ class Webcam(Process):
         t.clock()
         self.start_time = self.child_connection.recv()
         print("Video process starts at {}".format(self.start_time))
+        sys.stdout.flush()
 
         # frame rate
-        self.trial_path = self.message_queue.get()
+        self.trial_path = self.child_connection.recv()
         self.Mfile=open(self.trial_path + "/m_data.csv",'w')
-
-        self.cam = cv2.VideoCapture(1)
+        self.cam = cv2.VideoCapture(0)
         self.video  = cv2.VideoWriter(self.trial_path + "/video.avi",cv2.VideoWriter_fourcc('X','V','I','D'), self.fps, (640, 480), True)
         t.sleep(1.5) # allow enough time for the camera to adjust to the light condition before fetch ref frame
         self.reference_image = self.get_ref_frame()
         cv2.imshow('ref',self.reference_image)
 
-    # this function is to get a reference image, when the image is stable (there is less than 50 pixels have color difference)
+        # this function is to get a reference image, when the image is stable (there is less than 50 pixels have color difference)
     def get_ref_frame(self):
         while(True):
             if self.exit_event.is_set() :
@@ -97,6 +97,7 @@ class Webcam(Process):
 
             if self.error_adjust >= self.consective_parameter[1]:
                 print("Reference image adjusted at {}".format(str(round((t.clock()-self.start_time),2))))
+                sys.stdout.flush()
                 self.reference_image = self.get_ref_frame()
                 cv2.imshow('ref',self.reference_image)
                 self.error_adjust = 0
@@ -114,6 +115,7 @@ class Webcam(Process):
             self.recording.clear()
             #self.animal_prnt = False
             print("animal is gone at: {}".format(str(round((t.clock()-self.start_time),2))))
+            sys.stdout.flush()
 
     def further_processing(self, thresh):
         self.display_image = copy.deepcopy(self.original_image)
@@ -166,11 +168,10 @@ class Webcam(Process):
 
 
     def run(self):
-        # Unhandled exceptions are caught, sent to main process,
-        # then the process waits to be terminated from main
         try :
             self.begin()
             t3 = 0
+            
             while True:
                 t0 = t.clock()
                 if self.exit_event.is_set():
@@ -185,10 +186,13 @@ class Webcam(Process):
                     pass
 
                 t3 = t0
-            self.stop()
 
         except BaseException as e :
             self.child_connection.send ( e )
+            raise
+            
+        finally :
+            self.stop()
 
     def stop(self):
         self.Mfile.close()
