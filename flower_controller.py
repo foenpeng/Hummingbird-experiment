@@ -11,6 +11,7 @@ import time as t
 import traceback
 from datetime import date
 from multiprocessing import Process, Event, Queue, Pipe
+from humming_bird_experiment import ChildProcess
 
 DATA_FRAME_SIZE = 12
 
@@ -20,7 +21,7 @@ DATA_FRAME_SIZE = 12
 4 need to put nectar and injection information in video, how to pass data from child to child?
 5 check the logic of nectar detection
 """
-class FlowerController(Process):
+class FlowerController( ChildProcess ):
 
     def __init__(self,  recording, 
                         animal_departed,
@@ -29,14 +30,10 @@ class FlowerController(Process):
                         injector_port,
                         accel_sample_freq = 1000):
 
-        #Process setup
-        Process.__init__(self)
-
         # Those are the things need to be passed among processes
         self.recording = recording
         self.animal_departed = animal_departed
         self.exit_event = exit_event
-        self.parent_connection, self.child_connection = Pipe()
 
         # IR Sensor hysteresis constants
         self.low_to_high = 220
@@ -73,6 +70,9 @@ class FlowerController(Process):
         now = datetime.datetime.now()
         self.folder = str(today)+ "_" + str(now.hour)+ "_" + str(now.minute)
         self.trial_path = self.morph_path + "\\" + self.folder
+        
+        #Process setup
+        ChildProcess.__init__(self)
 
         # Make a working directory to ouput data files
         try:
@@ -85,7 +85,7 @@ class FlowerController(Process):
         t.clock()
         
         self.start_time = self.child_connection.recv()
-        print("Flower process starts at {}".format(self.start_time))
+        self.log("Flower process starts at {}".format(self.start_time))
         sys.stdout.flush()
         
         # Open output files in working directory
@@ -143,12 +143,14 @@ class FlowerController(Process):
     def run(self):
 
         try :
-
+            self.log('beginning')
             self.begin()
             self.controller.flushInput()
 
             while True:
+                self.log('in while loop')
                 if self.exit_event.is_set() :
+                    self.log('exit event is set!')
                     if self.recording.is_set() :
                         self.raw_files[-1]['stop time'] = round(t.clock()-self.start_time,4)
                         self.raw_files[-1]['handle'].close()
@@ -182,10 +184,10 @@ class FlowerController(Process):
 
         # unhandled exceptions stop the process and are sent to the parent
         except BaseException as e :
-            self.child_connection.send(e)
-            raise
+            self.raise_exc ( e )
             
         finally :
+            self.log('in finally clause')
             self.stop()
 
     def stop(self):
@@ -271,7 +273,7 @@ class FlowerController(Process):
                     if (self.nct_prnt == True) and (nectar_value > self.low_to_high) :                              #TODO: this has to change, since we are no longer sensing liquid!
 
                         self.nct_prnt = False
-                        print("Nectar emptied at time stamp {0} \n".format(toc))
+                        self.log("Nectar emptied at time stamp {0} \n".format(toc))
                         line = "0,{0}\n".format(toc)
                         self.Efile.write(line)
                         self.e_time = toc
@@ -355,7 +357,7 @@ class FlowerController(Process):
         self.Vfile.write(line)
         raw_file['handle'].close()
         os.remove(raw_file['handle'].name)
-        print("rawfile removed")
+        self.log("rawfile removed")
 
 
     def inject(self):
@@ -365,7 +367,7 @@ class FlowerController(Process):
         time = round(t.clock()-self.start_time,3)
         line = "{0}\n".format(time);
         self.inject_times += 1
-        print("The {0} Injection requested at time stamp {1} \n".format(self.inject_times,time))
+        self.log("The {0} Injection requested at time stamp {1} \n".format(self.inject_times,time))
         self.Ifile.write(line)
         return time
 

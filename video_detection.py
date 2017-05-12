@@ -5,8 +5,9 @@ import numpy as np
 import copy
 import sys
 from multiprocessing import Process, Event, Pipe
+from humming_bird_experiment import ChildProcess
 
-class Webcam(Process):
+class Webcam(ChildProcess):
 
     def __init__(self, recording, animal_departed, exit_event):
         self.recording = recording
@@ -26,14 +27,14 @@ class Webcam(Process):
         self.min_area = 1500 # the minimum amount of different pixels in simple processing to do furthre analysis
         self.ROI = [300,300,150] # circle parameters [x,y,r] to define the region of interest
         self.InjectionDelay = 2 # how many seconds after the animal left the region to refill nectar
-        Process.__init__(self)
+        ChildProcess.__init__(self)
 
 
 
     def begin(self):
         t.clock()
         self.start_time = self.child_connection.recv()
-        print("Video process starts at {}".format(self.start_time))
+        self.log("Video process starts at {}".format(self.start_time))
         sys.stdout.flush()
 
         # frame rate
@@ -96,7 +97,7 @@ class Webcam(Process):
                 self.frame_count = 0
 
             if self.error_adjust >= self.consective_parameter[1]:
-                print("Reference image adjusted at {}".format(str(round((t.clock()-self.start_time),2))))
+                self.log("Reference image adjusted at {}".format(str(round((t.clock()-self.start_time),2))))
                 sys.stdout.flush()
                 self.reference_image = self.get_ref_frame()
                 cv2.imshow('ref',self.reference_image)
@@ -114,7 +115,7 @@ class Webcam(Process):
             self.animal_departed.set()
             self.recording.clear()
             #self.animal_prnt = False
-            print("animal is gone at: {}".format(str(round((t.clock()-self.start_time),2))))
+            self.log("animal is gone at: {}".format(str(round((t.clock()-self.start_time),2))))
             sys.stdout.flush()
 
     def further_processing(self, thresh):
@@ -188,9 +189,7 @@ class Webcam(Process):
                 t3 = t0
 
         except BaseException as e :
-            self.child_connection.send ( e )
-            raise
-            
+            self.raise_exc ( e )
         finally :
             self.stop()
 
