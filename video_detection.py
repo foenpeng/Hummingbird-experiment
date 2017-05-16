@@ -203,8 +203,7 @@ class Webcam(ChildProcess):
 
 def main():
     animal_departed = Event()
-    exit_event = Event()
-    video = Webcam(animal_departed, exit_event);
+    video = Webcam(animal_departed);
     try:
         video.start()
         input("Press Enter to Exit: ")

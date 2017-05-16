@@ -146,7 +146,6 @@ class FlowerController( ChildProcess ):
             self.controller.flushInput()
 
             while True:
-                self.log('in while loop')
                 if self.exit_event.is_set() :
                     self.log('exit event is set!')
                     if self.recording.is_set() :

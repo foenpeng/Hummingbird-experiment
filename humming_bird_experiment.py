@@ -76,26 +76,6 @@ class ChildProcess ( multiprocessing.Process ) :
             self.log ( value, level = logging.CRITICAL )
             return exception
 
-class Foo ( ChildProcess ) :
-
-    def __init__ ( self ) :
-        ChildProcess.__init__ ( self )
-
-    def run ( self ) :
-        self.log_configure()
-        try :
-            while not self.exit_event.is_set() :
-                self.log ( 'Foo {}!'.format(self.pid) )
-                time.sleep(1)
-                if time.clock() > 10 :
-                    raise BaseException ( "Timeout!" )
-
-        except BaseException as e :
-            self.raise_exc ( e, traceback.format_exc() )
-
-        finally :
-            self.log ( 'Foo {} is terminating'.format(self.pid) )
-
 
 if __name__ == "__main__" :
 
@@ -121,9 +101,11 @@ if __name__ == "__main__" :
 
     trial_path = flower_control_process.trial_path
 
-    logging.basicConfig ( filename = trial_path + '\\log.txt', level = logging.INFO )
+    #logging.basicConfig ( level = logging.INFO )
     logger = multiprocessing.log_to_stderr()
     logger.setLevel(logging.INFO)
+    log_file_handler = logging.FileHandler(trial_path + '\\log.txt')
+    logger.addHandler(log_file_handler)
 
 
     from video_detection import Webcam
@@ -133,12 +115,12 @@ if __name__ == "__main__" :
     # Running block - catch exceptions here and then tear down the program.
 
     flower_control_process.parent_connection.send(round(time.clock(),4))
-    logger.info("starting flower control process")
+    #logger.info("starting flower control process")
     flower_control_process.start()
 
     webcam_process.parent_connection.send(round(time.clock(),4))
     webcam_process.parent_connection.send(trial_path)
-    logger.info("starting webcam process")
+    #logger.info("starting webcam process")
     webcam_process.start()
 
     while not gui.stop_event :
@@ -154,7 +136,8 @@ if __name__ == "__main__" :
 
 
     gui.stop()
-    exit_event.set()
+    flower_control_process.exit_event.set()
+    webcam_process.exit_event.set()
     comment_file = trial_path  + "/comments.txt"
 
     webcam_process.join()
