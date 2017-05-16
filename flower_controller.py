@@ -23,9 +23,8 @@ DATA_FRAME_SIZE = 12
 """
 class FlowerController( ChildProcess ):
 
-    def __init__(self,  recording, 
+    def __init__(self,  recording,
                         animal_departed,
-                        exit_event,
                         controller_port,
                         injector_port,
                         accel_sample_freq = 1000):
@@ -33,7 +32,6 @@ class FlowerController( ChildProcess ):
         # Those are the things need to be passed among processes
         self.recording = recording
         self.animal_departed = animal_departed
-        self.exit_event = exit_event
 
         # IR Sensor hysteresis constants
         self.low_to_high = 220
@@ -63,14 +61,14 @@ class FlowerController( ChildProcess ):
 
         # Making a directory for the morph and pass its address into a queue
         self.morph = str(input("Which morphology is it?\n")) + "l070r1.5R025v020p000"
-        
+
         self.morph_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "\\Data Files\\" + self.morph
-            
-        today = date.today()    
+
+        today = date.today()
         now = datetime.datetime.now()
         self.folder = str(today)+ "_" + str(now.hour)+ "_" + str(now.minute)
         self.trial_path = self.morph_path + "\\" + self.folder
-        
+
         #Process setup
         ChildProcess.__init__(self)
 
@@ -80,14 +78,14 @@ class FlowerController( ChildProcess ):
         except BaseException as e:
             print("failed to make working directory " + self.trial_path + "\n")
             raise
-            
+
     def begin(self):
         t.clock()
-        
+
         self.start_time = self.child_connection.recv()
         self.log("Flower process starts at {}".format(self.start_time))
         sys.stdout.flush()
-        
+
         # Open output files in working directory
         self.Xfilename = self.trial_path + "/" + self.Xfilename
         self.Yfilename = self.trial_path + "/" + self.Yfilename
@@ -102,7 +100,7 @@ class FlowerController( ChildProcess ):
                                 1000000,
                                 timeout = 1)
 
-        
+
 
         self.injector = s.Serial(self.injector_port,
                                  115200,
@@ -132,7 +130,7 @@ class FlowerController( ChildProcess ):
         # Send samples rates and start command
         cmd = bytearray("{0}\n".format(self.accel_sample_freq), 'ascii')
         self.controller.write(cmd)
-        
+
     """
     This function implements the running Loop of the
     FlowerController thread. It waits for 3-byte frames
@@ -184,14 +182,12 @@ class FlowerController( ChildProcess ):
 
         # unhandled exceptions stop the process and are sent to the parent
         except BaseException as e :
-            self.raise_exc ( e )
-            
+            self.raise_exc ( e, traceback.format_exc() )
         finally :
-            self.log('in finally clause')
             self.stop()
 
     def stop(self):
-
+        self.log ( 'Flower Controller {} is terminating'.format(self.pid) )
         # Assert Data Terminal Ready to reset Arduino
         self.controller.dtr = True
         t.sleep(1)
@@ -289,14 +285,14 @@ class FlowerController( ChildProcess ):
         for later processing.
         """
         self.rawfilename = self.trial_path + "/raw_data_{}".format(len(self.raw_files)+1)
-        
+
         self.raw_files.append( {
                                 'handle' : open(self.rawfilename, 'wb'),
                                 'size'   : 0,
                                 'start time' : round(t.clock()-self.start_time,4),
                                 'stop time'  : None,
                                 'frame count': 0 } )
-                                
+
         start_time = str( self.raw_files[-1]['start time']) + '\n'
         self.raw_files[-1]['handle'].write ( bytearray(start_time, 'ASCII') )
 

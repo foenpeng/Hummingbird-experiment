@@ -4,15 +4,15 @@ import datetime
 import numpy as np
 import copy
 import sys
+import traceback
 from multiprocessing import Process, Event, Pipe
 from humming_bird_experiment import ChildProcess
 
 class Webcam(ChildProcess):
 
-    def __init__(self, recording, animal_departed, exit_event):
+    def __init__(self, recording, animal_departed):
         self.recording = recording
         self.animal_departed = animal_departed
-        self.exit_event = exit_event
         self.parent_connection, self.child_connection = Pipe()
         self.animal_prnt = False
         self.firstFrame = None
@@ -172,7 +172,7 @@ class Webcam(ChildProcess):
         try :
             self.begin()
             t3 = 0
-            
+
             while True:
                 t0 = t.clock()
                 if self.exit_event.is_set():
@@ -189,11 +189,12 @@ class Webcam(ChildProcess):
                 t3 = t0
 
         except BaseException as e :
-            self.raise_exc ( e )
+            self.raise_exc ( e, traceback.format_exc() )
         finally :
             self.stop()
 
     def stop(self):
+        self.log ( 'Video Detection {} is terminating'.format(self.pid) )
         self.Mfile.close()
         self.cam.release()
         self.video.release()
