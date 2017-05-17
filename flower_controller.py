@@ -33,10 +33,6 @@ class FlowerController( ChildProcess ):
         self.recording = recording
         self.animal_departed = animal_departed
 
-        # IR Sensor hysteresis constants
-        self.low_to_high = 220
-        self.high_to_low = 225
-
         # Declare filenames to write in output folder
         self.Xfilename = "x_data.csv"
         self.Yfilename = "y_data.csv"
@@ -160,25 +156,32 @@ class FlowerController( ChildProcess ):
                     data = self.controller.read(24)
 
                     nectar_value = self.parse_nectar_measurement(data)
-                    self.determine_nectar_state( nectar_value )
+                    nectar_queue.append(nectar_value)
+
+                    if len(nectar_queue) >= 25:
+                        nectar_min = min(nectar_queue)
+                        self.determine_nectar_state( nectar_value,nectar_min)
+                        del nectar_queue[0]
 
                     self.raw_files[-1]['handle'].write(data)
 
                 elif self.animal_departed.is_set() :
+                    nectar_queue = []
+                    nectar_min = 0
+
                     if len(self.raw_files) > 0 and not self.raw_files[-1]['handle'].closed :
                         self.raw_files[-1]['stop time'] = round(t.clock()-self.start_time,4)
                         self.raw_files[-1]['handle'].close()
 
-                    if not self.nct_prnt and not self.check_nectar_post_injection :
+                    if  not self.nct_prnt:
                         time = self.inject()
-                        self.check_nectar_post_injection = True
+                        self.nct_prnt = True
 
                         line = "1,{}\n".format(time)
                         self.Efile.write(line)
 
                         self.e_time = time
                         self.animal_departed.clear()
-
         # unhandled exceptions stop the process and are sent to the parent
         except BaseException as e :
             self.raise_exc ( e, traceback.format_exc() )
@@ -254,9 +257,7 @@ class FlowerController( ChildProcess ):
 
         return nectar_value
 
-
-
-    def determine_nectar_state( self, nectar_value ) :
+    def determine_nectar_state( self, nectar_value, nectar_min) :
         """ Determines whether the beam has been blocked or not, based on the ADC value,
             and the two hysteresis thresholds, self.high_to_low and self.low_to_high
         """
@@ -265,18 +266,12 @@ class FlowerController( ChildProcess ):
                 toc = round((t.clock()-self.start_time),3)
                 if toc - self.e_time > 1:
 
-                    if (self.nct_prnt == True) and (nectar_value > self.low_to_high) :                              #TODO: this has to change, since we are no longer sensing liquid!
-
+                    if (self.nct_prnt == True) and (nectar_value - nectar_min >= 10) :
                         self.nct_prnt = False
-                        self.log("Nectar emptied at time stamp {0} \n".format(toc))
+                        print("Nectar emptied at time stamp {0} \n".format(toc))
                         line = "0,{0}\n".format(toc)
                         self.Efile.write(line)
                         self.e_time = toc
-
-                    if (self.check_nectar_post_injection) and (nectar_value < self.high_to_low) :
-                        self.check_nectar_post_injection = False
-                        self.nct_prnt = True
-
 
     def begin_raw_data_file (self) :
         """
