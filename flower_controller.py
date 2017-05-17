@@ -80,7 +80,6 @@ class FlowerController( ChildProcess ):
 
         self.start_time = self.child_connection.recv()
         self.log("Flower process starts at {}".format(self.start_time))
-        sys.stdout.flush()
 
         # Open output files in working directory
         self.Xfilename = self.trial_path + "/" + self.Xfilename
@@ -91,6 +90,16 @@ class FlowerController( ChildProcess ):
         self.Ifilename = self.trial_path + "/" + self.Ifilename
         self.Vfilename = self.trial_path + "/" + self.Vfilename
 
+        # Open output files for writing
+        self.Xfile = open(self.Xfilename, 'w')
+        self.Yfile = open(self.Yfilename, 'w')
+        self.Zfile = open(self.Zfilename, 'w')
+        self.Nfile = open(self.Nfilename, 'w')
+        self.Efile = open(self.Efilename, 'w')
+        self.Ifile = open(self.Ifilename, 'w')
+        self.Vfile = open(self.Vfilename, 'w')
+
+        
         # Open the two serial ports
         self.controller = s.Serial(self.controller_port,
                                 1000000,
@@ -114,15 +123,6 @@ class FlowerController( ChildProcess ):
         self.injector.dtr = False
         t.sleep(2)
 
-        # Open output files for writing
-        self.Xfile = open(self.Xfilename, 'w')
-        self.Yfile = open(self.Yfilename, 'w')
-        self.Zfile = open(self.Zfilename, 'w')
-        self.Nfile = open(self.Nfilename, 'w')
-        self.Efile = open(self.Efilename, 'w')
-        self.Ifile = open(self.Ifilename, 'w')
-        self.Vfile = open(self.Vfilename, 'w')
-
         # Send samples rates and start command
         cmd = bytearray("{0}\n".format(self.accel_sample_freq), 'ascii')
         self.controller.write(cmd)
@@ -137,7 +137,6 @@ class FlowerController( ChildProcess ):
     def run(self):
 
         try :
-            self.log('beginning')
             self.begin()
             self.controller.flushInput()
 
@@ -182,6 +181,7 @@ class FlowerController( ChildProcess ):
 
                         self.e_time = time
                         self.animal_departed.clear()
+                        
         # unhandled exceptions stop the process and are sent to the parent
         except BaseException as e :
             self.raise_exc ( e, traceback.format_exc() )
@@ -189,7 +189,6 @@ class FlowerController( ChildProcess ):
             self.stop()
 
     def stop(self):
-        self.log ( 'Flower Controller {} is terminating'.format(self.pid) )
         # Assert Data Terminal Ready to reset Arduino
         self.controller.dtr = True
         t.sleep(1)

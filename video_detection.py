@@ -32,13 +32,14 @@ class Webcam(ChildProcess):
 
 
     def begin(self):
+    
         t.clock()
         self.start_time = self.child_connection.recv()
-        self.log("Video process starts at {}".format(self.start_time))
-        sys.stdout.flush()
-
+        
         # frame rate
         self.trial_path = self.child_connection.recv()
+        self.log("Video process starts at {}".format(self.start_time))
+
         self.Mfile=open(self.trial_path + "/m_data.csv",'w')
         self.cam = cv2.VideoCapture(0)
         self.video  = cv2.VideoWriter(self.trial_path + "/video.avi",cv2.VideoWriter_fourcc('X','V','I','D'), self.fps, (640, 480), True)
@@ -61,8 +62,8 @@ class Webcam(ChildProcess):
             position =  np.matrix(np.where(subt1 > self.image_threshold))
             if position.shape[1] < 50:
                 break
-        if self.exit_event.is_set() :
-            self.stop()
+ 
+        self.stop()
         return self.firstFrame
 
     def consecutive_analysis(self, i1, i2, number):
@@ -194,7 +195,6 @@ class Webcam(ChildProcess):
             self.stop()
 
     def stop(self):
-        self.log ( 'Video Detection {} is terminating'.format(self.pid) )
         self.Mfile.close()
         self.cam.release()
         self.video.release()
