@@ -53,9 +53,9 @@ def configure_logger () :
     logger.addHandler(log_stream_handler)
     logger.addHandler(log_file_handler)
     return logger
-        
 
-        
+
+
 class ChildProcess ( multiprocessing.Process ) :
 
     def __init__ ( self ) :
@@ -67,12 +67,12 @@ class ChildProcess ( multiprocessing.Process ) :
         multiprocessing.Process.__init__ ( self )
 
     """ Send logging level and value to parent process for logging """
-    def log ( self, value, level = logging.INFO ) :        
+    def log ( self, value, level = logging.INFO ) :
         if os.getpid() == self.pid :
             if self.logger is None :
                 self.logger = configure_logger()
             self.logger.log ( level, value )
-        
+
     """ Sends an exception and traceback to the main process via its pipe """
     def raise_exc ( self, exception, traceback ) :
         self.child_connection.send ( (exception, traceback) )
@@ -103,17 +103,15 @@ if __name__ == "__main__" :
 
     from flower_controller import FlowerController
 
-    port1 = gui.get_flower_port()
-    port2 = gui.get_microinjector_port()
+    port = gui.get_flower_port()
 
     flower_control_process = FlowerController(  recording,
                                                 animal_departed,
-                                                controller_port = port1,
-                                                injector_port = port2   )
+                                                controller_port = port )
 
     trial_path = flower_control_process.trial_path
-    root_logger.info('Trial data will be saved at "{}"'.format(trial_path)) 
-    
+    root_logger.info('Trial data will be saved at "{}"'.format(trial_path))
+
     from video_detection import Webcam
     webcam_process = Webcam  (recording, animal_departed )
 
@@ -147,4 +145,3 @@ if __name__ == "__main__" :
     flower_control_process.join()
 
     write_comment(comment_file)
-    

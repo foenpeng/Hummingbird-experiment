@@ -26,7 +26,6 @@ class FlowerController( ChildProcess ):
     def __init__(self,  recording,
                         animal_departed,
                         controller_port,
-                        injector_port,
                         accel_sample_freq = 1000):
 
         # Those are the things need to be passed among processes
@@ -39,19 +38,15 @@ class FlowerController( ChildProcess ):
         self.Zfilename = "z_data.csv"
         self.Nfilename = "n_data.csv"
         self.Efilename = "e_data.csv"
-        self.Ifilename = "i_data.csv"
         self.Vfilename = "v_data.csv"
         self.raw_files = []
 
         # Initiate parameters
-        self.inject_times = 0
         self.nct_prnt = True
-        self.check_nectar_post_injection = False
         self.start_time = None
         self.e_time = 0
         self.state = "processing"
         self.controller_port = controller_port
-        self.injector_port = injector_port
         self.accel_sample_freq = accel_sample_freq
         self.file_processing = None
 
@@ -87,7 +82,6 @@ class FlowerController( ChildProcess ):
         self.Zfilename = self.trial_path + "/" + self.Zfilename
         self.Nfilename = self.trial_path + "/" + self.Nfilename
         self.Efilename = self.trial_path + "/" + self.Efilename
-        self.Ifilename = self.trial_path + "/" + self.Ifilename
         self.Vfilename = self.trial_path + "/" + self.Vfilename
 
         # Open output files for writing
@@ -96,31 +90,20 @@ class FlowerController( ChildProcess ):
         self.Zfile = open(self.Zfilename, 'w')
         self.Nfile = open(self.Nfilename, 'w')
         self.Efile = open(self.Efilename, 'w')
-        self.Ifile = open(self.Ifilename, 'w')
         self.Vfile = open(self.Vfilename, 'w')
 
-        
+
         # Open the two serial ports
         self.controller = s.Serial(self.controller_port,
                                 1000000,
                                 timeout = 1)
-
-
-
-        self.injector = s.Serial(self.injector_port,
-                                 115200,
-                                 timeout = 1)
-
         success = True
 
         # Assert Data Terminal Ready signal to reset Arduino
         self.controller.rtscts = True
-        self.injector.rtscts = True
         self.controller.dtr = True
-        self.injector.dtr = True
         t.sleep(1)
         self.controller.dtr = False
-        self.injector.dtr = False
         t.sleep(2)
 
         # Send samples rates and start command
@@ -173,7 +156,7 @@ class FlowerController( ChildProcess ):
                         self.raw_files[-1]['handle'].close()
 
                     if  not self.nct_prnt:
-                        time = self.inject()
+                        time = round(t.clock()-self.start_time,4)
                         self.nct_prnt = True
 
                         line = "1,{}\n".format(time)
@@ -181,7 +164,7 @@ class FlowerController( ChildProcess ):
 
                         self.e_time = time
                         self.animal_departed.clear()
-                        
+
         # unhandled exceptions stop the process and are sent to the parent
         except BaseException as e :
             self.raise_exc ( e, traceback.format_exc() )
@@ -207,7 +190,6 @@ class FlowerController( ChildProcess ):
         self.Zfile.close()
         self.Nfile.close()
         self.Efile.close()
-        self.Ifile.close()
         self.Vfile.close()
 
         try:
@@ -347,18 +329,6 @@ class FlowerController( ChildProcess ):
         raw_file['handle'].close()
         os.remove(raw_file['handle'].name)
         self.log("rawfile removed")
-
-
-    def inject(self):
-        self.injector.flushInput()
-        cmd = bytearray("inject\n", 'ascii')
-        self.injector.write(cmd)
-        time = round(t.clock()-self.start_time,3)
-        line = "{0}\n".format(time);
-        self.inject_times += 1
-        self.log("The {0} Injection requested at time stamp {1} \n".format(self.inject_times,time))
-        self.Ifile.write(line)
-        return time
 
     def locate_frame(self, index, data):
         if data[index] != ord('X'):
