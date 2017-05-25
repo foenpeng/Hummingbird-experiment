@@ -62,8 +62,6 @@ class Webcam(ChildProcess):
             position =  np.matrix(np.where(subt1 > self.image_threshold))
             if position.shape[1] < 50:
                 break
- 
-        self.stop()
         return self.firstFrame
 
     def consecutive_analysis(self, i1, i2, number):

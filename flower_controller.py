@@ -122,7 +122,8 @@ class FlowerController( ChildProcess ):
         try :
             self.begin()
             self.controller.flushInput()
-
+            nectar_queue = []
+            nectar_min = 0
             while True:
                 if self.exit_event.is_set() :
                     self.log('exit event is set!')
