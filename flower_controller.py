@@ -99,7 +99,7 @@ class FlowerController( ChildProcess ):
         self.Ifile = open(self.Ifilename, 'w')
         self.Vfile = open(self.Vfilename, 'w')
 
-        
+
         # Open the two serial ports
         self.controller = s.Serial(self.controller_port,
                                 1000000,
@@ -155,14 +155,15 @@ class FlowerController( ChildProcess ):
                     data = self.controller.read(24)
 
                     nectar_value = self.parse_nectar_measurement(data)
-                    nectar_queue.append(nectar_value)
+                    if nectar_value is not None:
+                        nectar_queue.append(nectar_value)
 
-                    if len(nectar_queue) >= 25:
-                        nectar_min = min(nectar_queue)
-                        self.determine_nectar_state( nectar_value,nectar_min)
-                        del nectar_queue[0]
+                        if len(nectar_queue) >= 25:
+                            nectar_min = min(nectar_queue)
+                            self.determine_nectar_state( nectar_value,nectar_min)
+                            del nectar_queue[0]
 
-                    self.raw_files[-1]['handle'].write(data)
+                            self.raw_files[-1]['handle'].write(data)
 
                 elif self.animal_departed.is_set() :
                     nectar_queue = []
@@ -181,7 +182,7 @@ class FlowerController( ChildProcess ):
 
                         self.e_time = time
                         self.animal_departed.clear()
-                        
+
         # unhandled exceptions stop the process and are sent to the parent
         except BaseException as e :
             self.raise_exc ( e, traceback.format_exc() )
@@ -265,7 +266,7 @@ class FlowerController( ChildProcess ):
                 toc = round((t.clock()-self.start_time),3)
                 if toc - self.e_time > 1:
 
-                    if (self.nct_prnt == True) and (nectar_value - nectar_min >= 10) :
+                    if (self.nct_prnt == True) and (nectar_value - nectar_min >= 20) :
                         self.nct_prnt = False
                         print("Nectar emptied at time stamp {0} \n".format(toc))
                         line = "0,{0}\n".format(toc)
