@@ -75,6 +75,7 @@ class Webcam(ChildProcess):
 
     def simple_processing(self, img):
         self.original_image = img
+        cv2.imshow('monitoring', self.original_image)
         self.current_image = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
         diff = cv2.absdiff(self.current_image, self.reference_image)
         ret,thresh = cv2.threshold(diff,
