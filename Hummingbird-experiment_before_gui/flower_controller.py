@@ -82,6 +82,7 @@ class FlowerController(Process):
 
     def begin(self):
         t.clock()
+        print("foo!")
         self.start_time = self.ftime_pipe.recv()
         print("Flower process starts at {}".format(self.start_time))
         self.message_queue.put(self.trial_path)
@@ -102,31 +103,36 @@ class FlowerController(Process):
         self.Vfilename = self.trial_path + "/" + self.Vfilename
 
         # Open the two serial ports
-        try:
+        try :
             # Open ports at 1Mbit/sec
             self.controller = s.Serial(self.controller_port,
                                     1000000,
                                     timeout = 1)
 
+        except s.SerialException as e :
+            print("failed to open flower controller port")
+            raise(e)
+
+        try :
+
             self.injector = s.Serial(self.injector_port,
                                      115200,
                                      timeout = 1)
-            success = True
+        except s.SerialException as e :
+            print("failed to open microinjector port")
+            raise(e)
 
-            # Assert Data Terminal Ready signal to reset Arduino
-            self.controller.rtscts = True
-            self.injector.rtscts = True
-            self.controller.dtr = True
-            self.injector.dtr = True
-            t.sleep(1)
-            self.controller.dtr = False
-            self.injector.dtr = False
-            t.sleep(2)
+        success = True
 
-        except s.SerialException:
-            success = False
-            print("Failed to open one of the ports")
-            raise(s.SerialException)
+        # Assert Data Terminal Ready signal to reset Arduino
+        self.controller.rtscts = True
+        self.injector.rtscts = True
+        self.controller.dtr = True
+        self.injector.dtr = True
+        t.sleep(1)
+        self.controller.dtr = False
+        self.injector.dtr = False
+        t.sleep(2)
 
         if success:
             try:
