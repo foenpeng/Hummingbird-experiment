@@ -139,7 +139,8 @@ class FlowerController( ChildProcess ):
                     data = self.controller.read(24)
 
                     nectar_value = self.parse_nectar_measurement(data)
-                    nectar_queue.append(nectar_value)
+                    if nectar_value is not None:
+                        nectar_queue.append(nectar_value)
 
                     if len(nectar_queue) >= 25:
                         nectar_min = min(nectar_queue)
@@ -250,7 +251,7 @@ class FlowerController( ChildProcess ):
 
                     if (self.nct_prnt == True) and (nectar_value - nectar_min >= 10) :
                         self.nct_prnt = False
-                        print("Nectar emptied at time stamp {0} \n".format(toc))
+                        self.log("Nectar emptied at time stamp {0} \n".format(toc))
                         line = "0,{0}\n".format(toc)
                         self.Efile.write(line)
                         self.e_time = toc

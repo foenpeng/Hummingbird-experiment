@@ -2,7 +2,7 @@ from tkinter.simpledialog import askstring
 import tkinter as tk
 
 DEFAULT_INJECTOR_PORT = "COM4"
-DEFAULT_FLOWER_PORT = "COM7"
+DEFAULT_FLOWER_PORT = "COM3"
 class Gui ( ) :
     """
 
