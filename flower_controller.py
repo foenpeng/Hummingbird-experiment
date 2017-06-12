@@ -25,12 +25,14 @@ class FlowerController( ChildProcess ):
 
     def __init__(self,  recording,
                         animal_departed,
+                        mode,
                         controller_port,
                         accel_sample_freq = 1000):
 
         # Those are the things need to be passed among processes
         self.recording = recording
         self.animal_departed = animal_departed
+        self.mode = mode
 
         # Declare filenames to write in output folder
         self.Xfilename = "x_data.csv"
@@ -51,7 +53,10 @@ class FlowerController( ChildProcess ):
         self.file_processing = None
 
         # Making a directory for the morph and pass its address into a queue
-        self.morph = str(input("Which morphology is it?\n")) + "l070r1.5R025v020p000"
+        if self.mode == "debug":
+            self.morph = str(input("Which morphology is it?\n")) + "l070r1.5R025v020p000"
+        elif self.mode == "task scheduler":
+            self.morph = "task_scheduler" + "l070r1.5R025v020p000"
 
         self.morph_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "\\Data Files\\" + self.morph
 

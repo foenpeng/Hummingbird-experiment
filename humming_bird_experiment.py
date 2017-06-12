@@ -7,6 +7,14 @@ import os
 import traceback
 import logging
 
+def check_mode():
+    if len(sys.argv) != 1:
+        return "debug"
+        root_logger.info("running interactively")
+    else:
+        root_logger.info("running by task scheduler")
+        return "task scheduler"
+
 def send_message(error_message):
     return requests.post(
         "https://api.mailgun.net/v3/YOUR_DOMAIN_NAME/messages",
@@ -46,7 +54,11 @@ def write_comment( comment_file ) :
 def configure_logger () :
     logger = multiprocessing.get_logger()
     logger.setLevel(logging.INFO)
-    log_file_handler = logging.FileHandler('log.txt')
+    
+    script_folder = os.path.dirname(__file__) 
+    filepath = os.path.join(script_folder, 'log.txt')
+    
+    log_file_handler = logging.FileHandler(filepath)
     log_stream_handler = logging.StreamHandler(sys.stdout)
     log_formatter = logging.Formatter('[%(levelname)s][%(processName)s][%(process)d][%(asctime)s] %(message)s')
     log_stream_handler.setFormatter(log_formatter)
@@ -91,12 +103,16 @@ class ChildProcess ( multiprocessing.Process ) :
 if __name__ == "__main__" :
 
     root_logger = configure_logger()
-
+    
+    mode = check_mode()
+    
     from gui import Gui
-    gui = Gui()
+    gui = Gui(mode)
+
 
     while not gui.start_event :
         gui.update()
+
 
     # IPC Objects for signaling and passing data between child processes
     recording = multiprocessing.Event()
@@ -108,7 +124,8 @@ if __name__ == "__main__" :
 
     flower_control_process = FlowerController(  recording,
                                                 animal_departed,
-                                                controller_port = port )
+                                                mode,
+                                                controller_port = port)
 
     trial_path = flower_control_process.trial_path
     root_logger.info('Trial data will be saved at "{}"'.format(trial_path))

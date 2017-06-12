@@ -7,7 +7,7 @@ class Gui ( ) :
     """
 
     """
-    def __init__ ( self ) :
+    def __init__ ( self, mode ) :
 
         self.root = tk.Tk()
         self.root.title('Hummingbird Experiment GUI')
@@ -21,8 +21,16 @@ class Gui ( ) :
         self.stop_event = False
         self.start_event = False
 
-        self.start_button = tk.Button( self.root, text = 'Start', command = self.start_experiment )
-        self.start_button.grid( column = 1, row = 3 )
+        self.mode = mode
+
+        if self.mode == "debug":
+            self.start_button = tk.Button( self.root, text = 'Start', command = self.start_experiment )
+            self.start_button.grid( column = 1, row = 3 )
+        else:
+            self.start_event = True
+            self.flower_port_field.insert('0.0', DEFAULT_FLOWER_PORT)
+            self.stop_button = tk.Button( self.root, text = 'Stop', command = self.stop_experiment )
+            self.stop_button.grid( column = 1, row = 3 )
 
 
     def update( self ) :
@@ -30,7 +38,6 @@ class Gui ( ) :
         self.root.update()
 
     def start_experiment ( self ) :
-
         if self.start_button['text'] == "Start" :
             self.start_event = True
 
@@ -41,10 +48,14 @@ class Gui ( ) :
 
             self.start_button['text'] = "Stop"
 
-
         elif self.start_button['text'] == "Stop" :
             print("stop button clicked")
             self.stop_event = True
+
+    def stop_experiment( self ):
+        print("stop button clicked")
+        self.stop_event = True
+
 
     def stop ( self ) :
         self.root.destroy()

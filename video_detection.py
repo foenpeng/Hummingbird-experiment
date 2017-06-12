@@ -23,7 +23,7 @@ class Webcam(ChildProcess):
         self.error_adjust = 0
         self.fps = 10
         self.consective_parameter = [10,10] # parameter used in consecutive analysis [every # frame to run analysis, threshold to make new ref_frame]
-        self.image_threshold = 100 # color difference after image convert to black-white
+        self.image_threshold = 75 # color difference after image convert to black-white
         self.min_area = 1500 # the minimum amount of different pixels in simple processing to do furthre analysis
         self.ROI = [300,250,150] # circle parameters [x,y,r] to define the region of interest
         self.InjectionDelay = 2 # how many seconds after the animal left the region to refill nectar
