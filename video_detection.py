@@ -21,7 +21,7 @@ class Webcam(ChildProcess):
         self.AbsentFrame = 0
         self.frame_count = 0
         self.error_adjust = 0
-        self.fps = 10
+        self.fps = 10 # highr frame rate are not in accurate time intervals, maybe limited by ccamera capacity
         self.consective_parameter = [10,10] # parameter used in consecutive analysis [every # frame to run analysis, threshold to make new ref_frame]
         self.image_threshold = 75 # color difference after image convert to black-white
         self.min_area = 1500 # the minimum amount of different pixels in simple processing to do furthre analysis
@@ -43,6 +43,7 @@ class Webcam(ChildProcess):
         self.Mfile=open(self.trial_path + "/m_data.csv",'w')
         self.cam = cv2.VideoCapture(0)
         self.video  = cv2.VideoWriter(self.trial_path + "/video.avi",cv2.VideoWriter_fourcc('X','V','I','D'), self.fps, (640, 480), True)
+        self.diff_video  = cv2.VideoWriter(self.trial_path + "/diff_video.avi",cv2.VideoWriter_fourcc('X','V','I','D'), self.fps, (640, 480), False)
         t.sleep(1.5) # allow enough time for the camera to adjust to the light condition before fetch ref frame
         self.reference_image = self.get_ref_frame()
         cv2.imshow('ref',self.reference_image)
@@ -143,12 +144,15 @@ class Webcam(ChildProcess):
             centroid_x = int(M['m10']/M['m00'])
             centroid_y = int(M['m01']/M['m00'])
             cv2.circle(self.display_image, (centroid_x,centroid_y), 5, (0,0,0), -1) # draw the centroid in the video
+            cv2.circle(thresh, (centroid_x,centroid_y), 5, (0,0,0), -1)
 
 
         # Determine whether the moving object is inside a defined area
         if (self.ROI[0]-centroid_x)**2 + (self.ROI[1]-centroid_y)**2 < self.ROI[2]**2: # judge if the centroid is inside the circle
             cv2.circle(self.display_image, (self.ROI[0], self.ROI[1]), self.ROI[2], (255, 255, 255), 2)
+            cv2.circle(thresh, (self.ROI[0], self.ROI[1]), self.ROI[2], (255, 255, 255), 2)
             cv2.putText(self.display_image, "Animal Present", (250, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (255, 255, 255), 1)
+            cv2.putText(thresh, "Animal Present", (250, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (255, 255, 255), 1)
             self.animal_prnt = True
 
             self.AbsentFrame = 0
@@ -156,16 +160,18 @@ class Webcam(ChildProcess):
             self.Mfile.write(line)
         else:
             cv2.circle(self.display_image, (self.ROI[0], self.ROI[1]), self.ROI[2], (0, 0, 0), 2)
-            cv2.putText(self.display_image, "Animal Absent", (250, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (255, 255, 255), 1)
             self.AbsentFrame += 1
             line = "{0},{1}\n".format(0,toc)
             self.Mfile.write(line)
 
         cv2.putText(self.display_image, datetime.datetime.now().strftime("%A %d %B %Y %I:%M:%S%p"),(10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (255, 255, 255), 1)
         cv2.putText(self.display_image, "Time Elapsed: {}".format(str(toc)),(250, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (255, 255, 255), 1)
+        cv2.putText(thresh, datetime.datetime.now().strftime("%A %d %B %Y %I:%M:%S%p"),(10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (255, 255, 255), 1)
+        cv2.putText(thresh, "Time Elapsed: {}".format(str(toc)),(250, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (255, 255, 255), 1)
         cv2.imshow('bird cam', self.display_image)
         cv2.imshow('thresh', thresh)
         self.video.write(self.display_image)
+        self.diff_video.write(thresh)
 
 
     def run(self):
@@ -197,6 +203,7 @@ class Webcam(ChildProcess):
         self.Mfile.close()
         self.cam.release()
         self.video.release()
+        self.diff_video.release()
         cv2.destroyAllWindows()
 
 
