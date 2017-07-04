@@ -23,7 +23,7 @@ class Webcam(ChildProcess):
         self.error_adjust = 0
         self.fps = 10 # highr frame rate are not in accurate time intervals, maybe limited by ccamera capacity
         self.consective_parameter = [10,10] # parameter used in consecutive analysis [every # frame to run analysis, threshold to make new ref_frame]
-        self.image_threshold = 75 # color difference after image convert to black-white
+        self.image_threshold = 90 # color difference after image convert to black-white
         self.min_area = 1500 # the minimum amount of different pixels in simple processing to do furthre analysis
         self.ROI = [300,250,150] # circle parameters [x,y,r] to define the region of interest
         self.InjectionDelay = 2 # how many seconds after the animal left the region to refill nectar
@@ -46,7 +46,7 @@ class Webcam(ChildProcess):
         self.diff_video  = cv2.VideoWriter(self.trial_path + "/diff_video.avi",cv2.VideoWriter_fourcc('X','V','I','D'), self.fps, (640, 480), False)
         t.sleep(1.5) # allow enough time for the camera to adjust to the light condition before fetch ref frame
         self.reference_image = self.get_ref_frame()
-        cv2.imshow('ref',self.reference_image)
+        #cv2.imshow('ref',self.reference_image)
 
         # this function is to get a reference image, when the image is stable (there is less than 50 pixels have color difference)
     def get_ref_frame(self):
@@ -101,7 +101,7 @@ class Webcam(ChildProcess):
                 self.log("Reference image adjusted at {}".format(str(round((t.clock()-self.start_time),2))))
                 sys.stdout.flush()
                 self.reference_image = self.get_ref_frame()
-                cv2.imshow('ref',self.reference_image)
+                #cv2.imshow('ref',self.reference_image)
                 self.error_adjust = 0
             else:
                 self.further_processing(thresh)
@@ -168,8 +168,8 @@ class Webcam(ChildProcess):
         cv2.putText(self.display_image, "Time Elapsed: {}".format(str(toc)),(250, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (255, 255, 255), 1)
         cv2.putText(thresh, datetime.datetime.now().strftime("%A %d %B %Y %I:%M:%S%p"),(10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (255, 255, 255), 1)
         cv2.putText(thresh, "Time Elapsed: {}".format(str(toc)),(250, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (255, 255, 255), 1)
-        cv2.imshow('bird cam', self.display_image)
-        cv2.imshow('thresh', thresh)
+        #cv2.imshow('bird cam', self.display_image)
+        #cv2.imshow('thresh', thresh)
         self.video.write(self.display_image)
         self.diff_video.write(thresh)
 

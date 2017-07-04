@@ -1,4 +1,6 @@
 from tkinter.simpledialog import askstring
+from datetime import datetime
+from threading import Timer
 import tkinter as tk
 
 DEFAULT_INJECTOR_PORT = "COM4"
@@ -7,7 +9,7 @@ class Gui ( ) :
     """
 
     """
-    def __init__ ( self, mode ) :
+    def __init__ ( self ) :
 
         self.root = tk.Tk()
         self.root.title('Hummingbird Experiment GUI')
@@ -21,17 +23,8 @@ class Gui ( ) :
         self.stop_event = False
         self.start_event = False
 
-        self.mode = mode
-
-        if self.mode == "debug":
-            self.start_button = tk.Button( self.root, text = 'Start', command = self.start_experiment )
-            self.start_button.grid( column = 1, row = 3 )
-        else:
-            self.start_event = True
-            self.flower_port_field.insert('0.0', DEFAULT_FLOWER_PORT)
-            self.stop_button = tk.Button( self.root, text = 'Stop', command = self.stop_experiment )
-            self.stop_button.grid( column = 1, row = 3 )
-
+        self.start_button = tk.Button( self.root, text = 'Start', command = self.start_experiment )
+        self.start_button.grid( column = 1, row = 3 )
 
     def update( self ) :
         self.root.update_idletasks()
@@ -52,10 +45,8 @@ class Gui ( ) :
             print("stop button clicked")
             self.stop_event = True
 
-    def stop_experiment( self ):
-        print("stop button clicked")
-        self.stop_event = True
-
+    def auto_click( self ):
+        self.start_button.invoke()
 
     def stop ( self ) :
         self.root.destroy()
@@ -63,10 +54,29 @@ class Gui ( ) :
     def get_flower_port ( self ) :
         return self.flower_port_field.get('0.0', 'end').rstrip('\n')
 
+    def program_timer( self, hours):
+        x=datetime.today()
+        y=x.replace(day=x.day, hour=hours, minute=0, second=0, microsecond=0)
+        delta_t=y-x
+        secs=delta_t.seconds+1
+        return secs
 
 # Module unit tests
 if __name__ == "__main__" :
-    gui = Gui()
+    gui = Gui("g")
+
+    def stop_program():
+        gui.stop_event = True
+    # stop the program at 21 o'clock
+    time_left = gui.program_timer(11)
+    print(time_left)
+    t = Timer(time_left, stop_program)
+    t.start()
+    print("timer starts")
+
+    if gui.mode != "debug":
+        gui.auto_click()
+        print("auto starts")
 
     try :
         while not gui.stop_event :
@@ -77,4 +87,6 @@ if __name__ == "__main__" :
 
     finally :
         print ( bytearray(gui.get_flower_port(), 'ASCII') )
+        if t.isAlive():
+            t.cancel()
         pass

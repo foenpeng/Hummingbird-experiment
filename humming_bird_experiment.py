@@ -6,6 +6,8 @@ import sys
 import os
 import traceback
 import logging
+from datetime import datetime
+from threading import Timer
 
 def check_mode():
     if len(sys.argv) != 1:
@@ -29,20 +31,20 @@ def write_comment( comment_file ) :
     try:
         filename = open(comment_file, "a")
 
-        temp = input("Temperature? \n").strip()
+        #temp = input("Temperature? \n").strip()
         filename.write("Temperature? \n")
         filename.write("{0}\n".format(temp))
-        hum = input("Humidity? \n").strip()
+        #hum = input("Humidity? \n").strip()
         filename.write("Humidity? \n")
         filename.write("{0}\n".format(hum))
         filename.write("Sex of the moth? \n\n")
-        weight = input("Body Weight? \n").strip()
+        #weight = input("Body Weight? \n").strip()
         filename.write("Body Weight?\n")
         filename.write("{0}\n".format(weight))
         filename.write("Body length? \n\n")
         filename.write("Proboscis length? \n\n")
         filename.write("How many days after eclosion? \n\n")
-        comments = input("Comments on this trial?\n").strip()
+        #comments = input("Comments on this trial?\n").strip()
         filename.write(comments)
         filename.close()
     except OSError as e:
@@ -54,10 +56,10 @@ def write_comment( comment_file ) :
 def configure_logger () :
     logger = multiprocessing.get_logger()
     logger.setLevel(logging.INFO)
-    
-    script_folder = os.path.dirname(__file__) 
+
+    script_folder = os.path.dirname(__file__)
     filepath = os.path.join(script_folder, 'log.txt')
-    
+
     log_file_handler = logging.FileHandler(filepath)
     log_stream_handler = logging.StreamHandler(sys.stdout)
     log_formatter = logging.Formatter('[%(levelname)s][%(processName)s][%(process)d][%(asctime)s] %(message)s')
@@ -103,16 +105,32 @@ class ChildProcess ( multiprocessing.Process ) :
 if __name__ == "__main__" :
 
     root_logger = configure_logger()
-    
-    mode = check_mode()
-    
-    from gui import Gui
-    gui = Gui(mode)
 
+    mode = check_mode()
+
+    from gui import Gui
+    gui = Gui()
+
+    if mode != "debug":
+        gui.auto_click()
+
+    def stop_program():
+        gui.stop_event = True
+
+    def program_timer( hours):
+        x=datetime.today()
+        y=x.replace(day=x.day, hour=hours, minute=10, second=0, microsecond=0)
+        delta_t=y-x
+        secs=delta_t.seconds+1
+        return secs
+
+    # stop the program at 21 o'clock
+    time_left = program_timer(12)
+    t = Timer(time_left, stop_program)
+    t.start()
 
     while not gui.start_event :
         gui.update()
-
 
     # IPC Objects for signaling and passing data between child processes
     recording = multiprocessing.Event()
@@ -162,4 +180,6 @@ if __name__ == "__main__" :
     webcam_process.join()
     flower_control_process.join()
 
-    write_comment(comment_file)
+    if t.isAlive():
+        t.cancel()
+    #write_comment(comment_file)
